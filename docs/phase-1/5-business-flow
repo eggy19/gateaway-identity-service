@@ -1,0 +1,331 @@
+# Business Flow
+
+Version: 1.0
+Module: Gateway + Identity Service
+Phase: 1 (MVP)
+Status: Draft
+
+## Purpose
+
+Dokumen ini menjelaskan alur proses bisnis (Business Flow) pada Gateway + Identity Service.
+
+Dokumen ini menjadi acuan implementasi seluruh business logic tanpa menjelaskan detail kode program.
+
+Setiap flow menggambarkan urutan proses yang harus dijalankan oleh sistem untuk menjaga konsistensi implementasi di seluruh tim maupun AI Coding Agent.
+
+---
+
+# Scope
+
+Phase 1 mencakup flow berikut:
+
+* Authentication
+* Session Management
+* Tenant Management
+* Branch Management
+* User Management
+
+---
+
+# 1. Login Flow
+
+Tujuan:
+
+Melakukan autentikasi pengguna menggunakan Email dan Password.
+
+Flow:
+
+```text
+Client
+    │
+    ▼
+POST /auth/login
+    │
+    ▼
+Validate Request
+    │
+    ▼
+Find User
+    │
+    ▼
+User Exists?
+    │
+    ├── No → Return Invalid Credential
+    │
+    ▼ Yes
+Check User Status
+    │
+    ▼
+Check Account Lock
+    │
+    ▼
+Verify Password
+    │
+    ├── Failed
+    │      │
+    │      ▼
+    │ Increment Failed Login
+    │      │
+    │      ▼
+    │ Save Login History
+    │      │
+    │      ▼
+    │ Return Unauthorized
+    │
+    ▼ Success
+Reset Failed Login Counter
+    │
+    ▼
+Create Session
+    │
+    ▼
+Set HttpOnly Cookie
+    │
+    ▼
+Save Login History
+    │
+    ▼
+Return Success
+```
+
+---
+
+# 2. Logout Flow
+
+Tujuan:
+
+Mengakhiri session pengguna.
+
+Flow:
+
+```text
+Client
+    │
+    ▼
+POST /auth/logout
+    │
+    ▼
+Validate Session
+    │
+    ▼
+Delete Session
+    │
+    ▼
+Clear Cookie
+    │
+    ▼
+Return Success
+```
+
+---
+
+# 3. Get Current User Flow
+
+Tujuan:
+
+Mengambil informasi user yang sedang login.
+
+Flow:
+
+```text
+Client
+    │
+    ▼
+GET /auth/me
+    │
+    ▼
+Validate Session
+    │
+    ▼
+Load User
+    │
+    ▼
+Return Profile
+```
+
+---
+
+# 4. Create Tenant Flow
+
+Tujuan:
+
+Mendaftarkan tenant baru.
+
+Flow:
+
+```text
+Validate Request
+    │
+    ▼
+Check Duplicate Tenant
+    │
+    ▼
+Create Tenant
+    │
+    ▼
+Create Default Branch
+    │
+    ▼
+Return Success
+```
+
+---
+
+# 5. Create Branch Flow
+
+Tujuan:
+
+Menambahkan branch baru pada tenant.
+
+Flow:
+
+```text
+Validate Request
+    │
+    ▼
+Validate Tenant
+    │
+    ▼
+Create Branch
+    │
+    ▼
+Return Success
+```
+
+---
+
+# 6. Create User Flow
+
+Tujuan:
+
+Membuat pengguna baru.
+
+Flow:
+
+```text
+Validate Request
+    │
+    ▼
+Validate Tenant
+    │
+    ▼
+Validate Branch
+    │
+    ▼
+Check Duplicate Email
+    │
+    ▼
+Create Better Auth User
+    │
+    ▼
+Create User Security
+    │
+    ▼
+Assign Branch
+    │
+    ▼
+Return Success
+```
+
+---
+
+# 7. Update User Flow
+
+Tujuan:
+
+Memperbarui informasi pengguna.
+
+Flow:
+
+```text
+Validate Request
+    │
+    ▼
+Find User
+    │
+    ▼
+Update Information
+    │
+    ▼
+Save Changes
+    │
+    ▼
+Return Success
+```
+
+---
+
+# 8. Session Validation Flow
+
+Tujuan:
+
+Memastikan session pengguna masih valid.
+
+Flow:
+
+```text
+Receive Request
+    │
+    ▼
+Read Cookie
+    │
+    ▼
+Find Session
+    │
+    ▼
+Session Exists?
+    │
+    ├── No → Unauthorized
+    │
+    ▼ Yes
+Session Expired?
+    │
+    ├── Yes → Unauthorized
+    │
+    ▼ No
+Load User
+    │
+    ▼
+Continue Request
+```
+
+---
+
+# Business Rules
+
+Seluruh flow harus mengikuti aturan berikut:
+
+* User harus aktif.
+* Tenant harus aktif.
+* Branch harus aktif.
+* Session harus valid.
+* Email harus unik.
+* Password harus mengikuti Password Policy.
+* Login gagal harus tercatat pada Login History.
+* Login berhasil harus mereset Failed Login Counter.
+* Akun yang mencapai batas percobaan login harus dikunci sementara sesuai konfigurasi keamanan.
+
+---
+
+# Out of Scope
+
+Business flow berikut belum termasuk pada Phase 1:
+
+* Role Management
+* Permission Management
+* Menu Management
+* OAuth Login
+* Multi Factor Authentication (MFA)
+* Social Login
+* Passkey
+* API Key
+* Device Trust
+* Single Sign-On (SSO)
+
+---
+
+# Conclusion
+
+Business Flow menjadi referensi utama dalam implementasi service layer.
+
+Setiap endpoint pada API Specification harus memiliki Business Flow yang sesuai, dan setiap implementasi service harus mengikuti urutan proses yang telah ditetapkan pada dokumen ini agar perilaku sistem tetap konsisten dan mudah diuji.
