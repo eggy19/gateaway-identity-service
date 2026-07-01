@@ -1,5 +1,11 @@
 import { registerAs } from '@nestjs/config';
 
+export interface GatewayConfig {
+  readonly privateKeyPath: string;
+  readonly jwtTtlSeconds: number;
+  readonly services: Readonly<Record<string, string | undefined>>;
+}
+
 export interface AppConfig {
   readonly env: string;
   readonly port: number;
@@ -66,5 +72,19 @@ export const authConfig = registerAs(
     maxFailedAttempts: toInt(process.env.AUTH_MAX_FAILED_ATTEMPTS, 5),
     lockDurationMinutes: toInt(process.env.AUTH_LOCK_DURATION_MINUTES, 15),
     passwordMinLength: toInt(process.env.PASSWORD_MIN_LENGTH, 8),
+  }),
+);
+
+export const gatewayConfig = registerAs(
+  'gateway',
+  (): GatewayConfig => ({
+    privateKeyPath: process.env.GATEWAY_PRIVATE_KEY_PATH ?? './certs/private.pem',
+    jwtTtlSeconds: toInt(process.env.INTERNAL_JWT_TTL_SECONDS, 300),
+    services: {
+      inventory: process.env.INVENTORY_SERVICE_URL,
+      billing: process.env.BILLING_SERVICE_URL,
+      clinical: process.env.CLINICAL_SERVICE_URL,
+      notification: process.env.NOTIFICATION_SERVICE_URL,
+    },
   }),
 );

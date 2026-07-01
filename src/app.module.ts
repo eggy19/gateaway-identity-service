@@ -1,16 +1,18 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
-import { appConfig, authConfig, databaseConfig } from './config/configuration';
+import { appConfig, authConfig, databaseConfig, gatewayConfig } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BranchModule } from './modules/branch/branch.module';
+import { GatewayModule } from './modules/gateway/gateway.module';
 import { HealthModule } from './modules/health/health.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
 import { AuthCoreModule } from './shared/auth/auth-core.module';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
+import { InternalJwtModule } from './shared/internal-jwt/internal-jwt.module';
 import { ResponseInterceptor } from './shared/interceptors/response.interceptor';
 import { RequestLoggerMiddleware } from './shared/middleware/request-logger.middleware';
 
@@ -19,16 +21,18 @@ import { RequestLoggerMiddleware } from './shared/middleware/request-logger.midd
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      load: [appConfig, databaseConfig, authConfig],
+      load: [appConfig, databaseConfig, authConfig, gatewayConfig],
       validate: validateEnv,
     }),
     DatabaseModule,
     AuthCoreModule,
+    InternalJwtModule,
     HealthModule,
     TenantModule,
     BranchModule,
     UserModule,
     AuthModule,
+    GatewayModule, // must be last — wildcard routes must not shadow specific routes
   ],
   providers: [
     {

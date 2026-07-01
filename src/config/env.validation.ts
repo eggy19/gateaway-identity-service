@@ -89,6 +89,32 @@ export class EnvironmentVariables {
   @Min(8)
   @IsOptional()
   readonly PASSWORD_MIN_LENGTH: number = 8;
+
+  @IsString()
+  @IsOptional()
+  readonly GATEWAY_PRIVATE_KEY_PATH: string = './certs/private.pem';
+
+  @IsInt()
+  @Min(60)
+  @Max(300)
+  @IsOptional()
+  readonly INTERNAL_JWT_TTL_SECONDS: number = 300;
+
+  @IsString()
+  @IsOptional()
+  readonly INVENTORY_SERVICE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  readonly BILLING_SERVICE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  readonly CLINICAL_SERVICE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  readonly NOTIFICATION_SERVICE_URL?: string;
 }
 
 const TRUTHY = new Set(['true', '1', 'yes']);
@@ -101,6 +127,7 @@ function coerce(config: Record<string, unknown>): Record<string, unknown> {
     'AUTH_MAX_FAILED_ATTEMPTS',
     'AUTH_LOCK_DURATION_MINUTES',
     'PASSWORD_MIN_LENGTH',
+    'INTERNAL_JWT_TTL_SECONDS',
   ];
   const result: Record<string, unknown> = { ...config };
 
