@@ -15,7 +15,7 @@ const mockChain = {
   sign: mockSign,
 };
 const MockSignJWT = jest.fn().mockImplementation(() => mockChain);
-const mockImportPKCS8 = jest.fn().mockResolvedValue({ type: 'private' } as unknown as CryptoKey);
+const mockImportPKCS8 = jest.fn().mockResolvedValue({ type: 'private' });
 
 jest.mock('jose', () => ({
   SignJWT: MockSignJWT,
@@ -23,7 +23,9 @@ jest.mock('jose', () => ({
 }));
 
 jest.mock('node:fs', () => ({
-  readFileSync: jest.fn().mockReturnValue('-----BEGIN PRIVATE KEY-----\nMOCK\n-----END PRIVATE KEY-----'),
+  readFileSync: jest
+    .fn()
+    .mockReturnValue('-----BEGIN PRIVATE KEY-----\nMOCK\n-----END PRIVATE KEY-----'),
 }));
 
 import { InternalJwtService } from './internal-jwt.service';

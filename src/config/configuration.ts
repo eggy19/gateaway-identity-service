@@ -9,7 +9,7 @@ export interface GatewayConfig {
 export interface AppConfig {
   readonly env: string;
   readonly port: number;
-  readonly corsOrigin: string;
+  readonly corsOrigins: string[];
 }
 
 export interface DatabaseConfig {
@@ -40,12 +40,20 @@ const toInt = (value: string | undefined, fallback: number): number => {
   return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+const toList = (value: string | undefined, fallback: string[]): string[] => {
+  const items = (value ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  return items.length > 0 ? items : fallback;
+};
+
 export const appConfig = registerAs(
   'app',
   (): AppConfig => ({
     env: process.env.NODE_ENV ?? 'development',
     port: toInt(process.env.PORT, 3000),
-    corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+    corsOrigins: toList(process.env.CORS_ORIGIN, ['http://localhost:3000']),
   }),
 );
 

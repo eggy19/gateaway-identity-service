@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { UserEntity } from '../../../shared/auth/entities/user.entity';
 import { UserStatus } from '../enums/user-status.enum';
 
@@ -26,6 +26,13 @@ export class UserRepository {
 
   findAll(): Promise<UserEntity[]> {
     return this.repository.find({ order: { createdAt: 'DESC' } });
+  }
+
+  findByIds(ids: string[]): Promise<UserEntity[]> {
+    if (ids.length === 0) {
+      return Promise.resolve([]);
+    }
+    return this.repository.find({ where: { id: In(ids) } });
   }
 
   existsByEmail(email: string): Promise<boolean> {

@@ -20,7 +20,7 @@ async function bootstrap(): Promise<void> {
   app.use(express.urlencoded({ extended: true }));
 
   const config = app.get(ConfigService);
-  const { port, corsOrigin } = config.getOrThrow<AppConfig>('app');
+  const { port, corsOrigins } = config.getOrThrow<AppConfig>('app');
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -31,7 +31,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  app.enableCors({ origin: corsOrigin, credentials: true });
+  app.enableCors({ origin: corsOrigins, credentials: true });
   app.setGlobalPrefix('api/v1');
 
   await app.listen(port);

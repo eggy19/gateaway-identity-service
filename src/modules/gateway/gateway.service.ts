@@ -101,9 +101,11 @@ export class GatewayService {
         validateStatus: () => true,
       });
 
-      this.logger.log(`Forwarded request to ${service} (${targetUrl}) with status ${response.status}`);
+      this.logger.log(
+        `Forwarded request to ${service} (${targetUrl}) with status ${response.status}`,
+      );
       this.logger.log(`response data: ${JSON.stringify(response.data)}`);
-    
+
       return { status: response.status, data: response.data };
     } catch (err: unknown) {
       if (isAxiosError(err)) {

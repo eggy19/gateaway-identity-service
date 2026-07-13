@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthConfig } from '../../../config/configuration';
 import { UserSecurityEntity } from '../entities/user-security.entity';
@@ -41,6 +41,23 @@ export class UserSecurityService {
       security.blockUntil = new Date(Date.now() + lockDurationMinutes * MINUTE_MS);
       security.lockReason = LOCK_REASON;
     }
+    await this.userSecurityRepository.save(security);
+  }
+
+  findAll(): Promise<UserSecurityEntity[]> {
+    return this.userSecurityRepository.findAll();
+  }
+
+  /** Admin unlock: clears the lock and failed-login counter so the user can log in again. */
+  async unlock(userId: string, actorId: string): Promise<void> {
+    const security = await this.userSecurityRepository.findByUserId(userId);
+    if (!security) {
+      throw new NotFoundException(`Security record for user ${userId} not found`);
+    }
+    security.failedLoginCount = 0;
+    security.blockUntil = null;
+    security.lockReason = null;
+    security.updatedBy = actorId;
     await this.userSecurityRepository.save(security);
   }
 

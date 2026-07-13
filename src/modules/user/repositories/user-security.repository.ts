@@ -29,4 +29,8 @@ export class UserSecurityRepository {
   findByUserId(userId: string, manager?: EntityManager): Promise<UserSecurityEntity | null> {
     return this.scoped(manager).findOne({ where: { userId } });
   }
+
+  findAll(): Promise<UserSecurityEntity[]> {
+    return this.repository.find();
+  }
 }

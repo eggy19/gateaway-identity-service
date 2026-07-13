@@ -18,6 +18,12 @@ import { UpdateUserStatusDto } from '../dto/update-user-status.dto';
 import { UserRepository } from '../repositories/user.repository';
 import { UserSecurityRepository } from '../repositories/user-security.repository';
 import { UserBranchRepository } from '../repositories/user-branch.repository';
+import { UserSecurityService } from './user-security.service';
+import {
+  UserBranchWithContext,
+  UserDetailContext,
+  UserWithContext,
+} from '../interfaces/user-context.interface';
 
 @Injectable()
 export class UserService {
@@ -28,6 +34,7 @@ export class UserService {
     private readonly userRepository: UserRepository,
     private readonly userSecurityRepository: UserSecurityRepository,
     private readonly userBranchRepository: UserBranchRepository,
+    private readonly userSecurityService: UserSecurityService,
     private readonly tenantService: TenantService,
     private readonly branchService: BranchService,
     private readonly dataSource: DataSource,
@@ -101,6 +108,79 @@ export class UserService {
 
   findAll(): Promise<UserEntity[]> {
     return this.userRepository.findAll();
+  }
+
+  findByIds(ids: string[]): Promise<UserEntity[]> {
+    return this.userRepository.findByIds(ids);
+  }
+
+  /**
+   * Admin list: every user joined in memory with its security state and
+   * primary branch/tenant. Branch and tenant names are resolved through their
+   * owning services (module-ownership rule), not by cross-module joins.
+   */
+  async findAllWithContext(): Promise<UserWithContext[]> {
+    const [users, assignments, securities, branches, tenants] = await Promise.all([
+      this.userRepository.findAll(),
+      this.userBranchRepository.findAll(),
+      this.userSecurityRepository.findAll(),
+      this.branchService.findAll(),
+      this.tenantService.findAll(),
+    ]);
+
+    const branchById = new Map(branches.map((branch) => [branch.id, branch]));
+    const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]));
+    const securityByUser = new Map(securities.map((security) => [security.userId, security]));
+    const assignmentsByUser = new Map<string, typeof assignments>();
+    for (const assignment of assignments) {
+      const list = assignmentsByUser.get(assignment.userId) ?? [];
+      list.push(assignment);
+      assignmentsByUser.set(assignment.userId, list);
+    }
+
+    return users.map((user) => {
+      const userAssignments = assignmentsByUser.get(user.id) ?? [];
+      const primary =
+        userAssignments.find((assignment) => assignment.isPrimary) ?? userAssignments[0];
+      const primaryBranch = primary ? (branchById.get(primary.branchId) ?? null) : null;
+      const tenant = primaryBranch ? (tenantById.get(primaryBranch.tenantId) ?? null) : null;
+      const security = securityByUser.get(user.id) ?? null;
+      return {
+        user,
+        security,
+        isLocked: this.userSecurityService.isLocked(security),
+        primaryBranch,
+        tenant,
+      };
+    });
+  }
+
+  /** Admin detail: user + security state + every branch assignment with names. */
+  async findDetail(id: string): Promise<UserDetailContext> {
+    const user = await this.findByIdOrThrow(id);
+    const [security, assignments, tenants] = await Promise.all([
+      this.userSecurityRepository.findByUserId(id),
+      this.userBranchRepository.findByUser(id),
+      this.tenantService.findAll(),
+    ]);
+    const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]));
+
+    const branches: UserBranchWithContext[] = [];
+    for (const assignment of assignments) {
+      const branch = await this.branchService.findByIdOrThrow(assignment.branchId);
+      branches.push({
+        assignment,
+        branch,
+        tenant: tenantById.get(branch.tenantId) ?? null,
+      });
+    }
+
+    return {
+      user,
+      security,
+      isLocked: this.userSecurityService.isLocked(security),
+      branches,
+    };
   }
 
   findByEmail(email: string): Promise<UserEntity | null> {

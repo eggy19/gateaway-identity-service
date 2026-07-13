@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserSecurityEntity } from '../entities/user-security.entity';
 import { UserSecurityRepository } from '../repositories/user-security.repository';
@@ -47,6 +48,30 @@ describe('UserSecurityService', () => {
 
     expect(security.failedLoginCount).toBe(1);
     expect(security.blockUntil).toBeNull();
+  });
+
+  it('unlock clears the lock state and counter', async () => {
+    const security = buildSecurity({
+      failedLoginCount: 3,
+      blockUntil: new Date(Date.now() + 60_000),
+      lockReason: 'Too many failed login attempts',
+    });
+    repository.findByUserId.mockResolvedValue(security);
+
+    await service.unlock('user-1', 'admin-1');
+
+    expect(security.failedLoginCount).toBe(0);
+    expect(security.blockUntil).toBeNull();
+    expect(security.lockReason).toBeNull();
+    expect(security.updatedBy).toBe('admin-1');
+    expect(repository.save).toHaveBeenCalledWith(security);
+  });
+
+  it('unlock throws when no security record exists', async () => {
+    repository.findByUserId.mockResolvedValue(null);
+
+    await expect(service.unlock('missing', 'admin-1')).rejects.toBeInstanceOf(NotFoundException);
+    expect(repository.save).not.toHaveBeenCalled();
   });
 
   it('resets the counter and records login info on success', async () => {

@@ -6,24 +6,29 @@ import { CreateUserDto } from '../dto/create-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateUserStatusDto } from '../dto/update-user-status.dto';
 import { UserResponseDto } from '../dto/user-response.dto';
+import { UserListItemResponseDto } from '../dto/user-list-item-response.dto';
+import { UserDetailResponseDto } from '../dto/user-detail-response.dto';
 import { UserMapper } from '../mappers/user.mapper';
 import { UserService } from '../services/user.service';
+import { UserSecurityService } from '../services/user-security.service';
 
 @Controller('users')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly userSecurityService: UserSecurityService,
+  ) {}
 
   @Get()
-  async findAll(): Promise<UserResponseDto[]> {
-    const users = await this.userService.findAll();
-    return UserMapper.toResponseList(users);
+  async findAll(): Promise<UserListItemResponseDto[]> {
+    const contexts = await this.userService.findAllWithContext();
+    return UserMapper.toListItemList(contexts);
   }
 
   @Get(':id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserResponseDto> {
-    const user = await this.userService.findByIdOrThrow(id);
-    const branchIds = await this.userService.findBranchIds(id);
-    return UserMapper.toResponse(user, branchIds);
+  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserDetailResponseDto> {
+    const detail = await this.userService.findDetail(id);
+    return UserMapper.toDetail(detail);
   }
 
   @Post()
@@ -55,5 +60,17 @@ export class UserController {
   ): Promise<UserResponseDto> {
     const user = await this.userService.updateStatus(id, dto);
     return UserMapper.toResponse(user);
+  }
+
+  @Post(':id/unlock')
+  @ResponseMessage('User unlocked successfully')
+  async unlock(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: SessionUser,
+  ): Promise<UserDetailResponseDto> {
+    await this.userService.findByIdOrThrow(id);
+    await this.userSecurityService.unlock(id, actor.id);
+    const detail = await this.userService.findDetail(id);
+    return UserMapper.toDetail(detail);
   }
 }

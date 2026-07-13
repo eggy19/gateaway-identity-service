@@ -30,6 +30,10 @@ export class UserBranchRepository {
     return this.scoped(manager).find({ where: { userId } });
   }
 
+  findAll(): Promise<UserBranchEntity[]> {
+    return this.repository.find();
+  }
+
   existsByUserAndBranch(userId: string, branchId: string): Promise<boolean> {
     return this.repository.existsBy({ userId, branchId });
   }

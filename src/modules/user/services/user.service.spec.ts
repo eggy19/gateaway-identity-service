@@ -8,6 +8,7 @@ import { UserSecurityEntity } from '../entities/user-security.entity';
 import { UserRepository } from '../repositories/user.repository';
 import { UserBranchRepository } from '../repositories/user-branch.repository';
 import { UserSecurityRepository } from '../repositories/user-security.repository';
+import { UserSecurityService } from './user-security.service';
 import { UserService } from './user.service';
 
 describe('UserService', () => {
@@ -15,6 +16,7 @@ describe('UserService', () => {
   let userRepository: jest.Mocked<Pick<UserRepository, 'existsByEmail' | 'findById'>>;
   let userSecurityRepository: jest.Mocked<Pick<UserSecurityRepository, 'create' | 'save'>>;
   let userBranchRepository: jest.Mocked<Pick<UserBranchRepository, 'create' | 'save'>>;
+  let userSecurityService: jest.Mocked<Pick<UserSecurityService, 'isLocked'>>;
   let tenantService: jest.Mocked<Pick<TenantService, 'findActiveByIdOrThrow'>>;
   let branchService: jest.Mocked<Pick<BranchService, 'findActiveByIdOrThrow'>>;
   let dataSource: jest.Mocked<Pick<DataSource, 'transaction' | 'query'>>;
@@ -42,6 +44,7 @@ describe('UserService', () => {
       create: jest.fn((d: Partial<UserBranchEntity>) => d as UserBranchEntity),
       save: jest.fn(),
     };
+    userSecurityService = { isLocked: jest.fn().mockReturnValue(false) };
     tenantService = { findActiveByIdOrThrow: jest.fn().mockResolvedValue({ id: 'tenant-1' }) };
     branchService = {
       findActiveByIdOrThrow: jest.fn().mockResolvedValue({ id: 'branch-1', tenantId: 'tenant-1' }),
@@ -56,6 +59,7 @@ describe('UserService', () => {
       userRepository as unknown as UserRepository,
       userSecurityRepository as unknown as UserSecurityRepository,
       userBranchRepository as unknown as UserBranchRepository,
+      userSecurityService as unknown as UserSecurityService,
       tenantService as unknown as TenantService,
       branchService as unknown as BranchService,
       dataSource as unknown as DataSource,

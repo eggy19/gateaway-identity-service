@@ -431,9 +431,10 @@ expiry). Pengguna yang aktif tidak akan di-logout tiba-tiba.
 
 **CORS — pengaturan untuk development**  
 Jika frontend berjalan di port berbeda (misal `:5173` untuk Vite), tambahkan ke
-`CORS_ORIGIN` di `.env` gateway:
+`CORS_ORIGIN` di `.env` gateway. Nilai ini menerima banyak origin sekaligus,
+dipisahkan dengan koma:
 ```
-CORS_ORIGIN=http://localhost:5173
+CORS_ORIGIN=http://localhost:5173,http://localhost:3000
 ```
 
 **X-Request-Id untuk debugging**  

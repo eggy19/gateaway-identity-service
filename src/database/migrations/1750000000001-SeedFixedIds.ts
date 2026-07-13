@@ -1,10 +1,10 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 const SYSTEM_ACTOR = '00000000-0000-0000-0000-000000000000';
-const TENANT_ID    = 'aaaaaaaa-0000-0000-0000-000000000001';
-const BRANCH_ID    = 'bbbbbbbb-0000-0000-0000-000000000001';
-const USER_ID      = 'cccccccc-0000-0000-0000-000000000001';
-const ACCOUNT_ID   = 'dddddddd-0000-0000-0000-000000000001';
+const TENANT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
+const BRANCH_ID = 'bbbbbbbb-0000-0000-0000-000000000001';
+const USER_ID = 'cccccccc-0000-0000-0000-000000000001';
+const ACCOUNT_ID = 'dddddddd-0000-0000-0000-000000000001';
 
 // Argon2id hash for "Password123!"
 const PASSWORD_HASH =
@@ -66,9 +66,9 @@ export class SeedFixedIds1750000000001 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DELETE FROM "user_branch"    WHERE user_id = $1`, [USER_ID]);
     await queryRunner.query(`DELETE FROM "user_security"  WHERE user_id = $1`, [USER_ID]);
-    await queryRunner.query(`DELETE FROM "account"        WHERE id = $1`,      [ACCOUNT_ID]);
-    await queryRunner.query(`DELETE FROM "user"           WHERE id = $1`,      [USER_ID]);
-    await queryRunner.query(`DELETE FROM "branch"         WHERE id = $1`,      [BRANCH_ID]);
-    await queryRunner.query(`DELETE FROM "tenant"         WHERE id = $1`,      [TENANT_ID]);
+    await queryRunner.query(`DELETE FROM "account"        WHERE id = $1`, [ACCOUNT_ID]);
+    await queryRunner.query(`DELETE FROM "user"           WHERE id = $1`, [USER_ID]);
+    await queryRunner.query(`DELETE FROM "branch"         WHERE id = $1`, [BRANCH_ID]);
+    await queryRunner.query(`DELETE FROM "tenant"         WHERE id = $1`, [TENANT_ID]);
   }
 }
