@@ -24,9 +24,13 @@ const pool = new Pool({
   database: process.env.DB_DATABASE ?? 'identity_service',
 });
 
-export const auth = createAuth({
+// Export a promise and a helper to obtain the runtime instance. The CLI can
+// `await authPromise` or call `getAuth()` to get the resolved instance.
+export const authPromise = createAuth({
   pool,
   secret: process.env.BETTER_AUTH_SECRET ?? 'cli-only-placeholder-secret-32-chars!!',
   baseURL: process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
   minPasswordLength: toInt(process.env.PASSWORD_MIN_LENGTH, 8),
 });
+
+export const getAuth = async () => await authPromise;

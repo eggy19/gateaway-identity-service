@@ -25,9 +25,9 @@ const poolProvider: Provider = {
 const authProvider: Provider = {
   provide: AUTH_INSTANCE,
   inject: [ConfigService, AUTH_DB_POOL],
-  useFactory: (config: ConfigService, pool: Pool) => {
+  useFactory: async (config: ConfigService, pool: Pool) => {
     const auth = config.getOrThrow<AuthConfig>('auth');
-    return createAuth({
+    return await createAuth({
       pool,
       secret: auth.secret,
       baseURL: auth.baseUrl,

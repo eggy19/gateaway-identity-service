@@ -1,6 +1,5 @@
 import * as argon2 from 'argon2';
 import type { BetterAuthOptions } from 'better-auth';
-import { PostgresDialect } from 'kysely';
 import type { Pool } from 'pg';
 
 export interface AuthOptionsParams {
@@ -26,7 +25,9 @@ const SESSION_UPDATE_AGE = 60 * 60 * 24; // refresh once per day
  * - `casing: 'snake'` → Better Auth columns are snake_case like the custom tables.
  * - Argon2id password hashing replaces the default scrypt (CLAUDE-STANDART §16).
  */
-export function buildAuthOptions(params: AuthOptionsParams): BetterAuthOptions {
+import { dynamicImport } from '../utils/dynamic-import';
+
+export async function buildAuthOptions(params: AuthOptionsParams): Promise<BetterAuthOptions> {
   const {
     pool,
     secret,
@@ -35,6 +36,8 @@ export function buildAuthOptions(params: AuthOptionsParams): BetterAuthOptions {
     minPasswordLength = DEFAULT_MIN_PASSWORD_LENGTH,
     sessionExpiresInSeconds = DEFAULT_SESSION_EXPIRES_IN,
   } = params;
+
+  const { PostgresDialect } = await dynamicImport('kysely');
 
   return {
     appName: 'gateway-identity-service',

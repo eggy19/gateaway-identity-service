@@ -81,7 +81,11 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
-    "setupFiles": ["reflect-metadata"],
-    "transformIgnorePatterns": ["node_modules/(?!jose)"]
+    "setupFiles": [
+      "reflect-metadata"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!jose)"
+    ]
   }
 }

@@ -15,6 +15,8 @@ import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { InternalJwtModule } from './shared/internal-jwt/internal-jwt.module';
 import { ResponseInterceptor } from './shared/interceptors/response.interceptor';
 import { RequestLoggerMiddleware } from './shared/middleware/request-logger.middleware';
+// `jose` is ESM-only; load dynamically when needed to avoid runtime require() errors.
+import { dynamicImport } from './shared/utils/dynamic-import';
 
 @Module({
   imports: [
@@ -48,5 +50,19 @@ import { RequestLoggerMiddleware } from './shared/middleware/request-logger.midd
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestLoggerMiddleware).forRoutes('*');
+  }
+}
+export class InternalJwtService {
+  private publicKey: string;
+
+  constructor(publicKey: string) {
+    this.publicKey = publicKey;
+  }
+
+  async verifyToken(token: string) {
+    const { importSPKI, jwtVerify } = await dynamicImport('jose');
+    const key = await importSPKI(this.publicKey, 'RS256');
+    const { payload } = await jwtVerify(token, key);
+    return payload;
   }
 }
