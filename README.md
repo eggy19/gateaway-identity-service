@@ -4,9 +4,9 @@ Healthcare SaaS — central identity platform. **Phase 1 (MVP)**: Authentication
 
 See [`docs/`](./docs) for the authoritative standards and phase plan:
 
-- [`docs/CLAUDE-STANDART.md`](./docs/CLAUDE-STANDART.md) — coding standards (LOCKED)
+- [`docs/CLAUDE-STANDARD.md`](./docs/CLAUDE-STANDARD.md) — coding standards (LOCKED)
 - [`docs/CLAUDE-ARCHITECTURE.md`](./docs/CLAUDE-ARCHITECTURE.md) — architecture rules (LOCKED)
-- [`docs/phase-1/identity-service-phase-1.md`](./docs/phase-1/identity-service-phase-1.md) — Phase 1 scope
+- [`docs/phase-1/identity-service-phase-1.md`](./docs/phase-1/1-identity-service-phase-1.md) — Phase 1 scope
 
 ## Tech Stack
 
