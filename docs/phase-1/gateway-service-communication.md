@@ -268,6 +268,15 @@ Gateway wajib menambahkan:
 * log tenant_id
 * log endpoint access
 
+Gateway mencatat satu baris log per request proxy, tanpa body, header, maupun query string:
+
+```
+proxy service=inventory method=GET path=/api/v1/inventory/items status=200 durationMs=12 requestId=<uuid> userId=<id> tenantId=<id>
+```
+
+Level: `debug` normal, `warn` jika downstream 5xx, `error` jika downstream tidak terjangkau.
+`X-Request-Id` dari client hanya dipakai jika berformat UUID.
+
 Contoh log:
 
 ```json

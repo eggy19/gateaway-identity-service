@@ -48,7 +48,11 @@ Content-Type: application/json
 | Header | Keterangan |
 |--------|------------|
 | `Cookie` | Cookie session browser — dihapus oleh Gateway sebelum forward |
-| `Authorization: Bearer` | Tidak dipakai dalam arsitektur ini |
+| `Authorization`, `Proxy-Authorization` | Dibuang Gateway; tidak dipakai dalam arsitektur ini |
+| `X-Tenant-Id`, `X-Branch-Id`, `X-User-Id` | Dibuang Gateway; khusus `/internal/*` antar service |
+| `Content-Length`, `Connection`, `Keep-Alive`, `Transfer-Encoding`, `Upgrade`, `TE`, `Trailer` | Dibuang; dihitung ulang oleh HTTP client Gateway |
+
+Path bersegmen `internal` dari client ditolak Gateway (404) dan tidak pernah diteruskan.
 
 ---
 

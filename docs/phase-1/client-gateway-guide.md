@@ -233,7 +233,7 @@ Browser / Client
 │
 ▼
 [1] RequestLogger Middleware
-    → Generate X-Request-Id (atau gunakan yang dikirim client)
+    → Generate X-Request-Id (nilai dari client hanya dipakai jika berformat UUID; selain itu dibuat baru)
 │
 ▼
 [2] Session Guard (otomatis, global)
@@ -251,7 +251,10 @@ Browser / Client
     → Load user branch (tenantId + branchId) dari database
     → Sign Internal JWT (Ed25519, expiry 5 menit):
        { sub, tenantId, branchId, sessionId, requestId, aud: 'inventory-service' }
-    → Hapus Cookie dari headers
+    → Tolak path bersegmen `internal` (404) dan dot-segment `.`/`..` termasuk yang di-encode (400)
+    → Hapus header terlarang dari client: cookie, host, authorization, proxy-authorization,
+      x-user-context, x-tenant-id, x-branch-id, x-user-id, content-length, dan hop-by-hop
+      (connection, keep-alive, transfer-encoding, upgrade, te, trailer)
     → Tambah X-User-Context: <JWT>
     → Tambah X-Request-Id
 │

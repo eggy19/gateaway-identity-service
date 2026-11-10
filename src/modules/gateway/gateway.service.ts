@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -18,6 +19,25 @@ import { GATEWAY_ROUTES } from './gateway-routes.config';
 interface RequestWithId extends Request {
   requestId?: string;
 }
+
+/** Client headers never forwarded downstream (BR-M2-04, KP-16 denylist). */
+const BLOCKED_REQUEST_HEADERS: ReadonlySet<string> = new Set([
+  'cookie',
+  'host',
+  'authorization',
+  'proxy-authorization',
+  'x-user-context',
+  'connection',
+  'keep-alive',
+  'transfer-encoding',
+  'upgrade',
+  'te',
+  'trailer',
+  'content-length',
+  'x-tenant-id',
+  'x-branch-id',
+  'x-user-id',
+]);
 
 export interface ForwardResult {
   status: number;
@@ -41,6 +61,18 @@ export class GatewayService {
     session: SessionInfo,
     service: string,
   ): Promise<ForwardResult> {
+    const startedAt = Date.now();
+    const originalUrl = req.originalUrl ?? req.url;
+    const apiPrefix = '/api/v1';
+
+    // Reject dot-segments / internal paths before any context resolution or JWT signing.
+    const rawPath = originalUrl.split(/[?#]/, 1)[0];
+    this.assertPathAllowed(
+      req,
+      user,
+      rawPath.startsWith(apiPrefix) ? rawPath.slice(apiPrefix.length) : rawPath,
+    );
+
     const route = GATEWAY_ROUTES[service];
     if (!route) {
       throw new NotFoundException(`Unknown downstream service: ${service}`);
@@ -59,8 +91,6 @@ export class GatewayService {
 
     // Strip only /api/v1 — service name stays in the path sent to downstream.
     // e.g. client: /api/v1/inventory/items → downstream: /inventory/items
-    const originalUrl = req.originalUrl ?? req.url;
-    const apiPrefix = '/api/v1';
     const subPathAndQuery = originalUrl.startsWith(apiPrefix)
       ? originalUrl.slice(apiPrefix.length) || '/'
       : '/';
@@ -78,8 +108,7 @@ export class GatewayService {
 
     const forwardHeaders: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
-      const lower = key.toLowerCase();
-      if (lower === 'cookie' || lower === 'host') continue;
+      if (BLOCKED_REQUEST_HEADERS.has(key.toLowerCase())) continue;
       if (typeof value === 'string') {
         forwardHeaders[key] = value;
       } else if (Array.isArray(value)) {
@@ -90,7 +119,7 @@ export class GatewayService {
     forwardHeaders['x-request-id'] = req.requestId ?? '';
 
     const targetUrl = `${targetBase}${subPathAndQuery}`;
-    this.logger.log(`Proxying ${req.method} ${req.url} → ${targetUrl} [aud=${route.audience}]`);
+    const tenantId = userBranch.branch.tenantId;
 
     try {
       const response = await this.httpService.axiosRef.request<unknown>({
@@ -101,17 +130,66 @@ export class GatewayService {
         validateStatus: () => true,
       });
 
-      this.logger.log(
-        `Forwarded request to ${service} (${targetUrl}) with status ${response.status}`,
+      this.logProxy(
+        response.status >= 500 ? 'warn' : 'debug',
+        req,
+        service,
+        response.status,
+        startedAt,
+        user.id,
+        tenantId,
       );
-      this.logger.log(`response data: ${JSON.stringify(response.data)}`);
 
       return { status: response.status, data: response.data };
     } catch (err: unknown) {
       if (isAxiosError(err)) {
+        this.logProxy('error', req, service, 503, startedAt, user.id, tenantId);
         throw new ServiceUnavailableException(`Downstream service '${service}' is unavailable`);
       }
       throw err;
     }
+  }
+
+  /** BR-M2-01..03: normalise sub-path, reject dot-segments (400) and `internal` segments (404). */
+  private assertPathAllowed(req: RequestWithId, user: SessionUser, subPath: string): void {
+    let segments: string[];
+    try {
+      segments = subPath
+        .split('/')
+        .flatMap((segment) => decodeURIComponent(segment).split(/[/\\]/))
+        .map((segment) => segment.toLowerCase());
+    } catch {
+      throw new BadRequestException('Invalid request path');
+    }
+
+    if (segments.some((segment) => segment === '.' || segment === '..')) {
+      throw new BadRequestException('Invalid request path');
+    }
+
+    if (segments.includes('internal')) {
+      this.logger.warn(
+        `Blocked internal path method=${req.method} path=${this.pathOnly(req)} userId=${user.id} requestId=${req.requestId ?? ''}`,
+      );
+      throw new NotFoundException('Not Found');
+    }
+  }
+
+  /** BR-M1-02: one summary line per proxied request; no body, query string, or headers. */
+  private logProxy(
+    level: 'debug' | 'warn' | 'error',
+    req: RequestWithId,
+    service: string,
+    status: number,
+    startedAt: number,
+    userId: string,
+    tenantId: string,
+  ): void {
+    this.logger[level](
+      `proxy service=${service} method=${req.method} path=${this.pathOnly(req)} status=${status} durationMs=${Date.now() - startedAt} requestId=${req.requestId ?? ''} userId=${userId} tenantId=${tenantId}`,
+    );
+  }
+
+  private pathOnly(req: RequestWithId): string {
+    return (req.originalUrl ?? req.url).split(/[?#]/, 1)[0];
   }
 }

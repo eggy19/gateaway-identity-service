@@ -2,12 +2,14 @@ import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface RequestWithId extends Request {
   requestId?: string;
 }
 
 /**
- * Assigns a correlation id to every request (honouring an inbound
+ * Assigns a correlation id to every request (honouring an inbound UUID
  * `X-Request-Id`), echoes it back on the response, and logs a single line per
  * request on completion.
  *
@@ -21,7 +23,8 @@ export class RequestLoggerMiddleware implements NestMiddleware {
 
   use(req: RequestWithId, res: Response, next: NextFunction): void {
     const inbound = req.headers['x-request-id'];
-    const requestId = (Array.isArray(inbound) ? inbound[0] : inbound) ?? randomUUID();
+    const candidate = Array.isArray(inbound) ? inbound[0] : inbound;
+    const requestId = candidate && UUID_REGEX.test(candidate) ? candidate : randomUUID();
     req.requestId = requestId;
     res.setHeader('X-Request-Id', requestId);
 
@@ -29,7 +32,7 @@ export class RequestLoggerMiddleware implements NestMiddleware {
     res.on('finish', () => {
       const durationMs = Date.now() - startedAt;
       this.logger.log(
-        `${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms [${requestId}]`,
+        `${req.method} ${req.originalUrl.split(/[?#]/, 1)[0]} ${res.statusCode} ${durationMs}ms [${requestId}]`,
       );
     });
 
