@@ -38,6 +38,8 @@ npm run migration:generate -- src/database/migrations/<Name>
 npm run migration:run
 ```
 
+Catatan `migration:generate`: index ekspresi `uq_role_tenant_code`, `uq_user_role_user_role_branch` dan CHECK `chk_user_role_tenant_branch` hanya ada di migration (tidak bisa dideklarasikan di entity). Hasil generate yang mengusulkan drop objek itu harus dibuang.
+
 Perubahan pada claim JWT, header yang diteruskan, atau daftar route proxy adalah
 perubahan **kontrak lintas service** — update juga `gateway-service-communication.md`
 dan cek dampaknya ke service downstream.
