@@ -11,7 +11,9 @@ import { RoleEntity } from './role.entity';
  *
  * The partial unique index `uq_user_role_user_role_branch`
  * (`user_id, role_id, COALESCE(branch_id, nil-uuid) WHERE deleted_at IS NULL`)
- * and the CHECK constraint exist in the migration only.
+ * and the CHECK constraint exist in the migration only, as do the composite FK
+ * `fk_user_role_branch_tenant (branch_id, tenant_id) -> branch(id, tenant_id)` and the
+ * `fk_user_role_user` ON DELETE RESTRICT (T-16a).
  */
 @Entity('user_role')
 @Index('idx_user_role_user_branch', ['userId', 'branchId'])
