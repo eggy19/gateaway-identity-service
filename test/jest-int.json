@@ -1,0 +1,11 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "roots": ["<rootDir>/test/integration"],
+  "testRegex": ".*\\.int-spec\\.ts$",
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" },
+  "transformIgnorePatterns": ["node_modules/(?!(jose|kysely))"],
+  "setupFiles": ["reflect-metadata"],
+  "testEnvironment": "node",
+  "testTimeout": 60000
+}

@@ -91,6 +91,7 @@ header) and is logged as a single line on completion.
 ```bash
 npm test           # unit tests (Jest)
 npm run test:cov   # with coverage
+npm run test:db    # integration tests against local PostgreSQL (self-cleaning test data)
 ```
 
 ## API Conventions
