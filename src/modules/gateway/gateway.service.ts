@@ -21,7 +21,7 @@ interface RequestWithId extends Request {
 }
 
 /** Client headers never forwarded downstream (BR-M2-04, KP-16 denylist). */
-const BLOCKED_REQUEST_HEADERS: ReadonlySet<string> = new Set([
+export const BLOCKED_REQUEST_HEADERS: ReadonlySet<string> = new Set([
   'cookie',
   'host',
   'authorization',
@@ -34,6 +34,8 @@ const BLOCKED_REQUEST_HEADERS: ReadonlySet<string> = new Set([
   'te',
   'trailer',
   'content-length',
+  'content-encoding',
+  'proxy-connection',
   'x-tenant-id',
   'x-branch-id',
   'x-user-id',

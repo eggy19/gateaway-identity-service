@@ -254,7 +254,8 @@ Browser / Client
     → Tolak path bersegmen `internal` (404) dan dot-segment `.`/`..` termasuk yang di-encode (400)
     → Hapus header terlarang dari client: cookie, host, authorization, proxy-authorization,
       x-user-context, x-tenant-id, x-branch-id, x-user-id, content-length, dan hop-by-hop
-      (connection, keep-alive, transfer-encoding, upgrade, te, trailer)
+      (connection, proxy-connection, keep-alive, transfer-encoding, upgrade, te, trailer),
+      serta content-encoding (body sudah di-decode Gateway; KP-29)
     → Tambah X-User-Context: <JWT>
     → Tambah X-Request-Id
 │

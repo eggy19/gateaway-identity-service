@@ -1,5 +1,5 @@
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
-import { GatewayService } from './gateway.service';
+import { BLOCKED_REQUEST_HEADERS, GatewayService } from './gateway.service';
 
 const user = { id: 'user-1' } as never;
 const session = { id: 'sess-1' } as never;
@@ -251,6 +251,52 @@ describe('GatewayService', () => {
       expect(sent['Content-Type']).toBe('application/json');
       expect(sent['Accept']).toBe('application/json');
       expect(sent['Idempotency-Key']).toBe('k1');
+    });
+
+    it('KP-29: content-encoding and proxy-connection are stripped', async () => {
+      const { service, request } = setup();
+      await service.forward(
+        makeReq(
+          '/api/v1/inventory/master/categories',
+          {
+            'Content-Encoding': 'gzip',
+            'Proxy-Connection': 'keep-alive',
+            Accept: 'application/json',
+          },
+          'POST',
+        ),
+        user,
+        session,
+        'inventory',
+      );
+      const keys = Object.keys(request.mock.calls[0][0].headers).map((k) => k.toLowerCase());
+      expect(keys).not.toContain('content-encoding');
+      expect(keys).not.toContain('proxy-connection');
+      expect(keys).toContain('accept');
+    });
+
+    it('KP-29: locks the full denylist so it cannot shrink unnoticed (BR-M2-04)', () => {
+      expect([...BLOCKED_REQUEST_HEADERS].sort()).toEqual(
+        [
+          'authorization',
+          'connection',
+          'content-encoding',
+          'content-length',
+          'cookie',
+          'host',
+          'keep-alive',
+          'proxy-authorization',
+          'proxy-connection',
+          'te',
+          'trailer',
+          'transfer-encoding',
+          'upgrade',
+          'x-branch-id',
+          'x-tenant-id',
+          'x-user-context',
+          'x-user-id',
+        ].sort(),
+      );
     });
 
     it.each(['PUT', 'PATCH', 'DELETE', 'POST', 'GET'])(
