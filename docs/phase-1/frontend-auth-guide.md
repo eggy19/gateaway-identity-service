@@ -118,11 +118,29 @@ Content-Type: application/json
     "email": "dummy@clinic.test",
     "emailVerified": true,
     "status": "active",
+    "branchIds": ["bbbbbbbb-0000-0000-0000-000000000001"],
     "createdAt": "2026-06-29T00:00:00.000Z",
-    "updatedAt": "2026-06-29T00:00:00.000Z"
+    "updatedAt": "2026-06-29T00:00:00.000Z",
+    "context": {
+      "tenantId": "aaaaaaaa-0000-0000-0000-000000000001",
+      "tenantName": "Demo Clinic",
+      "tenantCode": "CLINIC-FIXED-001",
+      "branchId": "bbbbbbbb-0000-0000-0000-000000000001",
+      "branchName": "Main Branch",
+      "branchCode": "MAIN",
+      "status": "active"
+    },
+    "roles": ["OWNER", "SUPER_ADMIN"],
+    "permissions": ["billing.sale.create", "identity.branch.read", "inventory.item.read"],
+    "branches": [
+      { "branchId": "bbbbbbbb-0000-0000-0000-000000000001", "branchName": "Main Branch", "isPrimary": true }
+    ]
   }
 }
 ```
+
+Bentuk `data` login **sama** dengan `GET /auth/me` (lihat bagian 5). Field `context`,
+`roles`, `permissions`, `branches` bersifat aditif; field lama tidak berubah.
 
 Browser otomatis menerima dan menyimpan cookie:
 
@@ -226,11 +244,37 @@ GET /api/v1/auth/me
     "email": "dummy@clinic.test",
     "emailVerified": true,
     "status": "active",
+    "branchIds": ["bbbbbbbb-0000-0000-0000-000000000001"],
     "createdAt": "2026-06-29T00:00:00.000Z",
-    "updatedAt": "2026-06-29T00:00:00.000Z"
+    "updatedAt": "2026-06-29T00:00:00.000Z",
+    "context": {
+      "tenantId": "aaaaaaaa-0000-0000-0000-000000000001",
+      "tenantName": "Demo Clinic",
+      "tenantCode": "CLINIC-FIXED-001",
+      "branchId": "bbbbbbbb-0000-0000-0000-000000000001",
+      "branchName": "Main Branch",
+      "branchCode": "MAIN",
+      "status": "active"
+    },
+    "roles": ["OWNER", "SUPER_ADMIN"],
+    "permissions": ["billing.sale.create", "identity.branch.read", "inventory.item.read"],
+    "branches": [
+      { "branchId": "bbbbbbbb-0000-0000-0000-000000000001", "branchName": "Main Branch", "isPrimary": true }
+    ]
   }
 }
 ```
+
+Keterangan field konteks:
+
+- `context`: tenant dan cabang aktif (cabang primary). `null` bila user belum punya assignment cabang.
+- `context.status`: `active` | `tenant_inactive` | `branch_inactive`. Selain `active`, request ke
+  service lain lewat proxy ditolak `403` ("Tenant atau cabang tidak aktif"); login dan `/auth/me` tetap berhasil.
+- `roles`: kode role efektif user (termasuk role `PLATFORM` seperti `SUPER_ADMIN`), terurut.
+- `permissions`: semua permission efektif (semua service, termasuk `identity.*`), tanpa duplikat, terurut.
+  Pakai untuk menampilkan/menyembunyikan menu dan tombol; penegakan akses tetap di backend.
+- `branches`: cabang yang di-assign ke user (informatif; belum ada pergantian cabang, KP-01).
+- Role/permission dimuat ulang di setiap request, jadi perubahan role terlihat pada pemanggilan `/auth/me` berikutnya tanpa logout.
 
 ### Response Error (`401 Unauthorized`) — belum login / session expired
 
@@ -585,8 +629,21 @@ export interface User {
   email: string;
   emailVerified: boolean;
   status: string;
+  branchIds?: string[];
   createdAt: string;
   updatedAt: string;
+  context: {
+    tenantId: string;
+    tenantName: string;
+    tenantCode: string;
+    branchId: string;
+    branchName: string;
+    branchCode: string;
+    status: 'active' | 'tenant_inactive' | 'branch_inactive';
+  } | null;
+  roles: string[];
+  permissions: string[];
+  branches: { branchId: string; branchName: string; isPrimary: boolean }[];
 }
 
 export interface LoginPayload {

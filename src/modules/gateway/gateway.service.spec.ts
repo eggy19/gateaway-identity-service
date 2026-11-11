@@ -1,7 +1,36 @@
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import type { ActiveContext, ActiveContextStatus } from '../role/services/active-context.service';
+import { GATEWAY_ROUTES } from './gateway-routes.config';
 import { BLOCKED_REQUEST_HEADERS, GatewayService } from './gateway.service';
 
-const user = { id: 'user-1' } as never;
+const user = { id: 'user-1', name: 'Siti NamaUjiZx91' } as never;
+
+function activeCtx(over: Partial<ActiveContext> = {}, status: ActiveContextStatus = 'active') {
+  const ctx: ActiveContext = {
+    context: {
+      tenantId: 't1',
+      tenantName: 'T',
+      tenantCode: 'T1',
+      branchId: 'b1',
+      branchName: 'B',
+      branchCode: 'B1',
+      status,
+    },
+    roles: ['OWNER', 'SUPER_ADMIN'],
+    platformRoles: ['SUPER_ADMIN'],
+    permissions: [
+      'billing.sale.create',
+      'clinical.patient.read',
+      'identity.user.read',
+      'inventory.dispensing.create',
+      'inventory.item.read',
+      'notification.template.read',
+    ],
+    branches: [],
+    ...over,
+  };
+  return ctx;
+}
 const session = { id: 'sess-1' } as never;
 
 function setup(
@@ -9,19 +38,24 @@ function setup(
     status: 200,
     data: { secret: 'BODY-DATA' },
   },
+  ctx: ActiveContext = activeCtx(),
 ) {
   const request = jest.fn<Promise<unknown>, [{ url: string; headers: Record<string, string> }]>();
   if (response instanceof Error) request.mockRejectedValue(response);
   else request.mockResolvedValue(response);
   const sign = jest.fn().mockResolvedValue('jwt-token');
-  const findPrimary = jest.fn().mockResolvedValue({ branchId: 'b1', branch: { tenantId: 't1' } });
+  const findPrimary = jest.fn().mockResolvedValue(ctx);
+  const services = Object.fromEntries(
+    Object.keys(GATEWAY_ROUTES).map((key) => [key, `http://${key}:3001`]),
+  );
+  services.inventory = 'http://inv:3001';
   const config = {
-    getOrThrow: () => ({ services: { inventory: 'http://inv:3001' } }),
+    getOrThrow: () => ({ services }),
   };
   const service = new GatewayService(
     { axiosRef: { request } } as never,
     { sign } as never,
-    { findPrimaryByUserId: findPrimary } as never,
+    { resolve: findPrimary } as never,
     config as never,
   );
   return { service, request, sign, findPrimary };
@@ -92,6 +126,106 @@ describe('GatewayService', () => {
         service.forward(makeReq('/api/v1/inventory/x'), user, session, 'inventory'),
       ).rejects.toMatchObject({ status: 503 });
       expect(error).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('T-16b claims and active context', () => {
+    type Claims = {
+      name: string;
+      roles: string[];
+      permissions: string[];
+      tenantId: string;
+      branchId: string;
+    };
+    const claimsOf = (sign: jest.Mock): Claims =>
+      (sign.mock.calls as Array<[Claims, string]>)[0][0];
+
+    it.each(Object.keys(GATEWAY_ROUTES))(
+      'AC-D1B-14: audience of %s gets only permissions prefixed with its route key',
+      async (key) => {
+        const { service, sign } = setup(undefined, activeCtx());
+        await service.forward(makeReq(`/api/v1/${key}/x`), user, session, key);
+        expect((sign.mock.calls as Array<[Claims, string]>)[0][1]).toBe(
+          GATEWAY_ROUTES[key].audience,
+        );
+        const { permissions } = claimsOf(sign);
+        expect(permissions.length).toBeGreaterThan(0);
+        for (const p of permissions) expect(p.startsWith(`${key}.`)).toBe(true);
+      },
+    );
+
+    it('AC-D1B-05/13: roles exclude PLATFORM roles; identity.* never in JWT', async () => {
+      const { service, sign } = setup();
+      await service.forward(makeReq('/api/v1/inventory/x'), user, session, 'inventory');
+      const claims = claimsOf(sign);
+      expect(claims.roles).toEqual(['OWNER']);
+      expect(claims.permissions).toEqual(['inventory.dispensing.create', 'inventory.item.read']);
+      expect(claims.tenantId).toBe('t1');
+      expect(claims.branchId).toBe('b1');
+      expect(claims.name).toBe('Siti NamaUjiZx91');
+    });
+
+    it('BR-D1B-07: user without roles still proxied with empty roles/permissions', async () => {
+      const { service, sign, request } = setup(
+        undefined,
+        activeCtx({ roles: [], platformRoles: [], permissions: [] }),
+      );
+      await service.forward(makeReq('/api/v1/inventory/x'), user, session, 'inventory');
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(claimsOf(sign)).toMatchObject({ roles: [], permissions: [] });
+    });
+
+    it('AC-D1B-14: unknown service -> 404 and no JWT, no resolver call', async () => {
+      const { service, sign, findPrimary } = setup();
+      await expect(
+        service.forward(makeReq('/api/v1/unknown/x'), user, session, 'unknown'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(sign).not.toHaveBeenCalled();
+      expect(findPrimary).not.toHaveBeenCalled();
+    });
+
+    it.each(['tenant_inactive', 'branch_inactive'] as const)(
+      'AC-D1B-06: %s -> 403, not forwarded, no JWT',
+      async (status) => {
+        const { service, sign, request } = setup(undefined, activeCtx({}, status));
+        await expect(
+          service.forward(makeReq('/api/v1/inventory/x'), user, session, 'inventory'),
+        ).rejects.toMatchObject({
+          status: 403,
+          message: 'Tenant atau cabang tidak aktif',
+        });
+        expect(sign).not.toHaveBeenCalled();
+        expect(request).not.toHaveBeenCalled();
+      },
+    );
+
+    it('no branch assignment -> 403', async () => {
+      const { service, sign } = setup(undefined, activeCtx({ context: null }));
+      await expect(
+        service.forward(makeReq('/api/v1/inventory/x'), user, session, 'inventory'),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(sign).not.toHaveBeenCalled();
+    });
+
+    it('AC-D1B-15: user name never appears in any log line (200, 403 downstream, 503)', async () => {
+      await setup().service.forward(makeReq('/api/v1/inventory/x'), user, session, 'inventory');
+      await setup({ status: 403, data: {} }).service.forward(
+        makeReq('/api/v1/inventory/x'),
+        user,
+        session,
+        'inventory',
+      );
+      const axiosErr = Object.assign(new Error('down'), { isAxiosError: true });
+      await expect(
+        setup(axiosErr).service.forward(makeReq('/api/v1/inventory/x'), user, session, 'inventory'),
+      ).rejects.toMatchObject({ status: 503 });
+      const all = [...debug.mock.calls, ...log.mock.calls, ...warn.mock.calls, ...error.mock.calls];
+      expect(all.length).toBeGreaterThan(0);
+      for (const call of all) {
+        const text = call.map(String).join(' ');
+        expect(text).not.toContain('NamaUjiZx91');
+        expect(text).not.toContain('Siti');
+      }
     });
   });
 

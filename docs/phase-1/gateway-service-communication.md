@@ -65,14 +65,22 @@ Gateway bertanggung jawab penuh terhadap:
 
 * Load user roles
 * Load permissions
-* Validasi access control sebelum request diteruskan
+* Validasi konteks aktif sebelum request diteruskan (user aktif, tenant dan cabang aktif; selain itu 403)
+
+Gateway **tidak** memetakan route proxy ke permission. Enforcement permission untuk
+route proxy dilakukan di service tujuan (default-deny) berdasarkan claim `permissions`
+(BR-D1B-09). Service tujuan memutuskan akses berdasarkan **permission**, bukan nama role.
+
+Roles dan permission dihitung oleh **satu resolver konteks aktif** (`ActiveContextService`,
+`src/modules/role/services/active-context.service.ts`) yang juga dipakai `/auth/me` dan
+login (BR-D1B-01/11). Resolver dijalankan di setiap request, tanpa cache (BR-D1B-06).
 
 Contoh permission:
 
 ```text
 inventory.item.read
 inventory.item.create
-billing.invoice.create
+billing.sale.create
 ```
 
 ---
@@ -122,12 +130,13 @@ JWT ini:
 ```json
 {
   "sub": "user-uuid",
+  "name": "Siti Rahmawati",
   "tenantId": "tenant-uuid",
   "branchId": "branch-uuid",
-  "roles": ["ADMIN"],
+  "roles": ["OWNER", "APOTEKER"],
   "permissions": [
     "inventory.item.read",
-    "inventory.item.create"
+    "inventory.dispensing.create"
   ],
   "sessionId": "session-uuid",
   "requestId": "trace-id",
@@ -137,6 +146,27 @@ JWT ini:
   "exp": 1710000300
 }
 ```
+
+Aturan claim (T-16b, spec prasyarat-kasir BR-D1B-05):
+
+* `roles`: semua kode role efektif user di cabang aktif, **kecuali** role `PLATFORM`
+  (mis. `SUPER_ADMIN`). Hanya untuk tampilan/log/audit, bukan untuk keputusan akses.
+* `permissions`: hanya permission berprefix `<service tujuan>.`. Prefix = kunci route
+  di `GATEWAY_ROUTES` (`inventory`, `billing`, `clinical`, `notification`); tidak ada
+  mapping kedua. Permission `identity.*` tidak pernah masuk JWT. Tanpa duplikat, terurut
+  alfabetis (BR-D1B-12).
+* `name`: nama tampilan user, di-trim lalu dipotong 150 karakter (per karakter, bukan
+  byte). Selalu string (`""` bila kosong). Dikirim ke semua audience (KP-34).
+  **Data pribadi: dilarang di-log** oleh Gateway maupun downstream di level apa pun, dan
+  tidak boleh masuk `audit_log`; downstream hanya boleh menyimpannya sebagai snapshot data
+  bisnis (mis. `cashier_name`).
+* User tanpa role di cabang aktif tetap diproxy dengan `roles: []`, `permissions: []`;
+  downstream yang menolak (403) (BR-D1B-07).
+* Ketiga claim bersifat aditif. JWT dari Gateway lama (tanpa `name`/`roles`/`permissions`)
+  harus tetap diterima downstream: perlakukan `name` sebagai `null`, `roles` dan
+  `permissions` sebagai `[]`.
+* Ukuran: payload OWNER + `name` 150 karakter multi-byte tetap jauh di bawah 4 KB
+  (header `X-User-Context` akun seed OWNER dengan 29 permission inventory: sekitar 1,8 KB).
 
 ---
 
@@ -166,9 +196,11 @@ Gateway melakukan:
 
 1. Validate session
 2. Retrieve user profile
-3. Retrieve roles & permissions
-4. Validate access rights
-5. Generate Internal JWT
+3. Resolve konteks aktif: branch primary, status tenant/cabang, roles & permissions
+4. Tolak 403 `Tenant atau cabang tidak aktif` bila tenant/cabang nonaktif atau terhapus
+   (BR-D1B-02). Gateway tidak memetakan route ke permission; downstream yang menegakkan
+   permission (BR-D1B-09)
+5. Generate Internal JWT (roles, permissions berprefix service tujuan, name)
 6. Forward request to Inventory
 
 ---
@@ -193,9 +225,11 @@ Gateway wajib mengirim header berikut ke semua downstream services:
 ```http
 X-User-Context: <JWT>
 X-Request-Id: <uuid>
-X-Tenant-Id: <uuid> (optional fallback)
-X-Branch-Id: <uuid> (optional fallback)
 ```
+
+`X-Tenant-Id` / `X-Branch-Id` **tidak** dikirim Gateway ke downstream dan header dari client
+dibuang (BR-M2-04). Header itu khusus endpoint `/internal/*` antar service (BR-B2-01).
+Tenant dan cabang selalu dari claim JWT.
 
 ---
 

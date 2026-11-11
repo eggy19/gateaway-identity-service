@@ -91,6 +91,11 @@ export class BranchService {
     return this.branchRepository.findByTenant(tenantId);
   }
 
+  /** Active-context resolver: soft-deleted branches are included (caller inspects `deletedAt`). */
+  findByIdsWithDeleted(ids: string[]): Promise<BranchEntity[]> {
+    return this.branchRepository.findByIdsWithDeleted(ids);
+  }
+
   async findByIdOrThrow(id: string): Promise<BranchEntity> {
     const branch = await this.branchRepository.findById(id);
     if (!branch) {

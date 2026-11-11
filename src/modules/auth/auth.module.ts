@@ -4,6 +4,7 @@ import { SessionEntity } from '../../shared/auth/entities/session.entity';
 import { SessionRepository } from '../../shared/auth/repositories/session.repository';
 import { BranchModule } from '../branch/branch.module';
 import { TenantModule } from '../tenant/tenant.module';
+import { RoleModule } from '../role/role.module';
 import { UserModule } from '../user/user.module';
 import { AuthController } from './controllers/auth.controller';
 import { SessionController } from './controllers/session.controller';
@@ -19,6 +20,7 @@ import { LoginHistoryService } from './services/login-history.service';
   imports: [
     TypeOrmModule.forFeature([LoginHistoryEntity, SessionEntity]),
     UserModule,
+    RoleModule,
     TenantModule,
     BranchModule,
   ],

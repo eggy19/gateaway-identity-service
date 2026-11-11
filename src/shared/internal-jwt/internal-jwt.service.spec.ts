@@ -28,7 +28,7 @@ jest.mock('node:fs', () => ({
     .mockReturnValue('-----BEGIN PRIVATE KEY-----\nMOCK\n-----END PRIVATE KEY-----'),
 }));
 
-import { InternalJwtService } from './internal-jwt.service';
+import { InternalJwtService, normalizeJwtName } from './internal-jwt.service';
 
 describe('InternalJwtService', () => {
   let service: InternalJwtService;
@@ -67,8 +67,11 @@ describe('InternalJwtService', () => {
   it('sign() calls SignJWT with the correct claims and returns a token', async () => {
     const payload = {
       sub: 'user-uuid-1',
+      name: '  Siti Rahmawati ',
       tenantId: 'tenant-uuid-1',
       branchId: 'branch-uuid-1',
+      roles: ['OWNER'],
+      permissions: ['inventory.item.read'],
       sessionId: 'session-uuid-1',
       requestId: 'req-uuid-1',
     };
@@ -76,8 +79,11 @@ describe('InternalJwtService', () => {
     const token = await service.sign(payload, 'inventory-service');
 
     expect(MockSignJWT).toHaveBeenCalledWith({
+      name: 'Siti Rahmawati',
       tenantId: 'tenant-uuid-1',
       branchId: 'branch-uuid-1',
+      roles: ['OWNER'],
+      permissions: ['inventory.item.read'],
       sessionId: 'session-uuid-1',
       requestId: 'req-uuid-1',
     });
@@ -91,8 +97,11 @@ describe('InternalJwtService', () => {
   it('sign() uses a different audience per downstream service', async () => {
     const payload = {
       sub: 'u1',
+      name: 'U',
       tenantId: 't1',
       branchId: 'b1',
+      roles: [],
+      permissions: [],
       sessionId: 's1',
       requestId: 'r1',
     };
@@ -102,5 +111,26 @@ describe('InternalJwtService', () => {
 
     await service.sign(payload, 'billing-service');
     expect(mockChain.setAudience).toHaveBeenLastCalledWith('billing-service');
+  });
+});
+
+describe('normalizeJwtName (BR-D1B-05, AC-D1B-15)', () => {
+  it('keeps a normal name', () => {
+    expect(normalizeJwtName('Siti Rahmawati')).toBe('Siti Rahmawati');
+  });
+
+  it('trims first, then cuts to 150 characters', () => {
+    expect(normalizeJwtName(`   ${'a'.repeat(200)}`)).toBe('a'.repeat(150));
+  });
+
+  it('counts characters, not bytes (multi-byte and emoji); stays well under 4 KB', () => {
+    const out = normalizeJwtName('é😀'.repeat(100));
+    expect(Array.from(out)).toHaveLength(150);
+    expect(Buffer.byteLength(out)).toBeLessThan(1024);
+  });
+
+  it('null/undefined -> empty string (always a string)', () => {
+    expect(normalizeJwtName(null)).toBe('');
+    expect(normalizeJwtName(undefined)).toBe('');
   });
 });

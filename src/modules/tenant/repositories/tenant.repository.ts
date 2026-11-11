@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { TenantEntity } from '../entities/tenant.entity';
 
 /**
@@ -28,6 +28,12 @@ export class TenantRepository {
 
   findById(id: string, manager?: EntityManager): Promise<TenantEntity | null> {
     return this.scoped(manager).findOne({ where: { id } });
+  }
+
+  /** Includes soft-deleted rows, so callers can tell "deleted" apart from "unknown". */
+  findByIdsWithDeleted(ids: string[]): Promise<TenantEntity[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.repository.find({ where: { id: In(ids) }, withDeleted: true });
   }
 
   findAll(manager?: EntityManager): Promise<TenantEntity[]> {

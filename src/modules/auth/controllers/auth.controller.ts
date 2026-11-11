@@ -18,10 +18,12 @@ import {
 import { Public } from '../../../shared/auth/decorators/public.decorator';
 import { ResponseMessage } from '../../../shared/decorators/response-message.decorator';
 import type { SessionInfo, SessionUser } from '../../../shared/auth/auth.types';
-import { UserResponseDto } from '../../user/dto/user-response.dto';
-import { UserMapper } from '../../user/mappers/user.mapper';
+import { UserEntity } from '../../../shared/auth/entities/user.entity';
+import { ActiveContextService } from '../../role/services/active-context.service';
 import { UserService } from '../../user/services/user.service';
+import { AuthUserResponseDto } from '../dto/auth-user-response.dto';
 import { LoginDto } from '../dto/login.dto';
+import { AuthUserMapper } from '../mappers/auth-user.mapper';
 import { SessionResponseDto } from '../dto/session-response.dto';
 import { AuthService, LoginContext } from '../services/auth.service';
 
@@ -37,6 +39,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly userService: UserService,
+    private readonly activeContextService: ActiveContextService,
   ) {}
 
   @Public()
@@ -47,10 +50,9 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<UserResponseDto> {
+  ): Promise<AuthUserResponseDto> {
     const user = await this.authService.login(dto, extractContext(req), res);
-    const branchIds = await this.userService.findBranchIds(user.id);
-    return UserMapper.toResponse(user, branchIds);
+    return this.toAuthResponse(user);
   }
 
   @Post('logout')
@@ -65,10 +67,9 @@ export class AuthController {
   }
 
   @Get('me')
-  async me(@CurrentUser() user: SessionUser): Promise<UserResponseDto> {
+  async me(@CurrentUser() user: SessionUser): Promise<AuthUserResponseDto> {
     const entity = await this.userService.findByIdOrThrow(user.id);
-    const branchIds = await this.userService.findBranchIds(user.id);
-    return UserMapper.toResponse(entity, branchIds);
+    return this.toAuthResponse(entity);
   }
 
   @Get('session')
@@ -94,5 +95,13 @@ export class AuthController {
   ): Promise<{ revoked: true }> {
     await this.authService.revokeSession(id, user.id, req.headers);
     return { revoked: true };
+  }
+
+  private async toAuthResponse(user: UserEntity): Promise<AuthUserResponseDto> {
+    const [branchIds, active] = await Promise.all([
+      this.userService.findBranchIds(user.id),
+      this.activeContextService.resolve(user.id),
+    ]);
+    return AuthUserMapper.toResponse(user, branchIds, active);
   }
 }

@@ -13,7 +13,11 @@ import type { Request } from 'express';
 import type { GatewayConfig } from '../../config/configuration';
 import type { SessionInfo, SessionUser } from '../../shared/auth/auth.types';
 import { InternalJwtService } from '../../shared/internal-jwt/internal-jwt.service';
-import { UserBranchRepository } from '../user/repositories/user-branch.repository';
+import {
+  ActiveContextService,
+  jwtPermissions,
+  jwtRoles,
+} from '../role/services/active-context.service';
 import { GATEWAY_ROUTES } from './gateway-routes.config';
 
 interface RequestWithId extends Request {
@@ -53,7 +57,7 @@ export class GatewayService {
   constructor(
     private readonly httpService: HttpService,
     private readonly jwtService: InternalJwtService,
-    private readonly userBranchRepo: UserBranchRepository,
+    private readonly activeContext: ActiveContextService,
     private readonly config: ConfigService,
   ) {}
 
@@ -86,10 +90,14 @@ export class GatewayService {
       throw new ServiceUnavailableException(`Downstream service '${service}' is not configured`);
     }
 
-    const userBranch = await this.userBranchRepo.findPrimaryByUserId(user.id);
-    if (!userBranch) {
+    const active = await this.activeContext.resolve(user.id);
+    if (!active.context) {
       throw new ForbiddenException('User has no branch assignment');
     }
+    if (active.context.status !== 'active') {
+      throw new ForbiddenException('Tenant atau cabang tidak aktif');
+    }
+    const { tenantId, branchId } = active.context;
 
     // Strip only /api/v1 — service name stays in the path sent to downstream.
     // e.g. client: /api/v1/inventory/items → downstream: /inventory/items
@@ -100,8 +108,11 @@ export class GatewayService {
     const jwt = await this.jwtService.sign(
       {
         sub: user.id,
-        tenantId: userBranch.branch.tenantId,
-        branchId: userBranch.branchId,
+        name: user.name,
+        tenantId,
+        branchId,
+        roles: jwtRoles(active),
+        permissions: jwtPermissions(active, service),
         sessionId: session.id,
         requestId: req.requestId ?? '',
       },
@@ -121,7 +132,6 @@ export class GatewayService {
     forwardHeaders['x-request-id'] = req.requestId ?? '';
 
     const targetUrl = `${targetBase}${subPathAndQuery}`;
-    const tenantId = userBranch.branch.tenantId;
 
     try {
       const response = await this.httpService.axiosRef.request<unknown>({

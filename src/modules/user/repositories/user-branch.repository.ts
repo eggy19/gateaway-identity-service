@@ -37,17 +37,4 @@ export class UserBranchRepository {
   existsByUserAndBranch(userId: string, branchId: string): Promise<boolean> {
     return this.repository.existsBy({ userId, branchId });
   }
-
-  async findPrimaryByUserId(userId: string): Promise<UserBranchEntity | null> {
-    const primary = await this.repository.findOne({
-      where: { userId, isPrimary: true },
-      relations: { branch: true },
-    });
-    if (primary) return primary;
-    return this.repository.findOne({
-      where: { userId },
-      relations: { branch: true },
-      order: { createdAt: 'ASC' },
-    });
-  }
 }

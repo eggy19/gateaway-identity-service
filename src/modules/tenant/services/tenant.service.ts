@@ -65,6 +65,11 @@ export class TenantService {
     return this.tenantRepository.findAll();
   }
 
+  /** Active-context resolver: soft-deleted tenants are included (caller inspects `deletedAt`). */
+  findByIdsWithDeleted(ids: string[]): Promise<TenantEntity[]> {
+    return this.tenantRepository.findByIdsWithDeleted(ids);
+  }
+
   async findByIdOrThrow(id: string): Promise<TenantEntity> {
     const tenant = await this.tenantRepository.findById(id);
     if (!tenant) {

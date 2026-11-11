@@ -7,10 +7,24 @@ import type { GatewayConfig } from '../../config/configuration';
 
 export interface InternalJwtPayload {
   sub: string;
+  /** Display name; personal data, never log it (BR-D1B-05). Truncated to {@link JWT_NAME_MAX_LENGTH}. */
+  name: string;
   tenantId: string;
   branchId: string;
+  roles: string[];
+  /** Already filtered to the target service prefix by the caller (BR-D1B-05/12). */
+  permissions: string[];
   sessionId: string;
   requestId: string;
+}
+
+export const JWT_NAME_MAX_LENGTH = 150;
+
+/** Trim, then keep at most 150 characters (code points, not bytes). */
+export function normalizeJwtName(name: string | null | undefined): string {
+  return Array.from((name ?? '').trim())
+    .slice(0, JWT_NAME_MAX_LENGTH)
+    .join('');
 }
 
 @Injectable()
@@ -32,8 +46,11 @@ export class InternalJwtService implements OnModuleInit {
 
   async sign(payload: InternalJwtPayload, audience: string): Promise<string> {
     return new SignJWT({
+      name: normalizeJwtName(payload.name),
       tenantId: payload.tenantId,
       branchId: payload.branchId,
+      roles: payload.roles,
+      permissions: payload.permissions,
       sessionId: payload.sessionId,
       requestId: payload.requestId,
     })

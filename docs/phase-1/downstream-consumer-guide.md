@@ -73,8 +73,11 @@ Path bersegmen `internal` dari client ditolak Gateway (404) dan tidak pernah dit
 ```json
 {
   "sub": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Siti Rahmawati",
   "tenantId": "tenant-uuid",
   "branchId": "branch-uuid",
+  "roles": ["OWNER", "APOTEKER"],
+  "permissions": ["inventory.dispensing.create", "inventory.item.read"],
   "sessionId": "session-uuid",
   "requestId": "req-uuid",
   "iss": "gateway-identity-service",
@@ -89,6 +92,9 @@ Path bersegmen `internal` dari client ditolak Gateway (404) dan tidak pernah dit
 | `sub` | UUID | ID user (referensi ke tabel `user` di Identity Service) |
 | `tenantId` | UUID | Tenant aktif user |
 | `branchId` | UUID | Branch aktif user |
+| `name` | string | Nama tampilan user, maks. 150 karakter. **Data pribadi: jangan di-log** (termasuk log error verifikasi dan log debug payload), jangan masuk `audit_log`; boleh disimpan hanya sebagai snapshot data bisnis (mis. `cashier_name`). Bila tidak ada (JWT dari Gateway lama), anggap `null`, bukan error |
+| `roles` | string[] | Kode role efektif di cabang aktif, tanpa role `PLATFORM`. Hanya untuk tampilan/log/audit. Bila tidak ada, anggap `[]` |
+| `permissions` | string[] | Permission efektif **hanya berprefix service ini** (mis. `inventory.`), terurut, tanpa duplikat. Keputusan akses (default-deny) berdasarkan claim ini, bukan nama role. Bila tidak ada, anggap `[]` |
 | `sessionId` | UUID | ID session Better Auth |
 | `requestId` | UUID | Sama dengan `X-Request-Id` header |
 | `iss` | string | Selalu `gateway-identity-service` |
@@ -330,6 +336,8 @@ logger.info({
 | JANGAN percaya `tenantId` / `userId` dari query param atau body | Hanya percaya dari JWT yang sudah diverifikasi |
 | JANGAN izinkan algoritma `none` atau simetrik (HS256) | Paksa `EdDSA` |
 | JANGAN cache JWT | Token short-lived, selalu verify setiap request |
+| JANGAN log claim `name` (dan email) | Data pribadi (BR-D1B-05); berlaku di semua level log |
+| JANGAN memutuskan akses dari nama role | Gunakan claim `permissions` (BR-D1B-08) |
 | JANGAN expose public key path via API | Key hanya dibaca saat startup |
 
 > **Catatan:** Downstream service sebaiknya hanya dapat diakses dari network
