@@ -201,6 +201,10 @@ Relationship
 
 Many-to-Many.
 
+Catatan (T-19, KP-35): `fk_user_branch_user` bertipe `ON DELETE RESTRICT` (migration
+`1750000000004-UserBranchUserRestrict`; sebelumnya `CASCADE`). User dinonaktifkan lewat
+`PATCH /users/:id/status`, bukan dihapus.
+
 ---
 
 ## 5.8 user_security

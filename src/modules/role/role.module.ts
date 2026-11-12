@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { PermissionGuard } from '../../shared/auth/guards/permission.guard';
 import { BranchModule } from '../branch/branch.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { UserModule } from '../user/user.module';
@@ -21,7 +23,12 @@ import { ActiveContextService } from './services/active-context.service';
     TenantModule,
     BranchModule,
   ],
-  providers: [UserRoleRepository, ActiveContextService],
-  exports: [TypeOrmModule, ActiveContextService],
+  // PermissionGuard must be registered after SessionGuard (AuthCoreModule is scanned first).
+  providers: [
+    UserRoleRepository,
+    ActiveContextService,
+    { provide: APP_GUARD, useClass: PermissionGuard },
+  ],
+  exports: [TypeOrmModule, ActiveContextService, UserRoleRepository],
 })
 export class RoleModule {}

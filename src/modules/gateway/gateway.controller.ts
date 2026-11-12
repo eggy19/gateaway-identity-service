@@ -2,6 +2,7 @@ import { All, Controller, Param, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { SessionInfo, SessionUser } from '../../shared/auth/auth.types';
 import { CurrentSession, CurrentUser } from '../../shared/auth/decorators/current-user.decorator';
+import { PermissionExempt } from '../../shared/auth/decorators/require-permission.decorator';
 import { GatewayService } from './gateway.service';
 
 /**
@@ -10,7 +11,11 @@ import { GatewayService } from './gateway.service';
  *
  * Flow: SessionGuard validates cookie → controller extracts service prefix →
  * GatewayService signs Internal JWT → forwards request to downstream.
+ *
+ * Exempt from the Gateway permission guard: permissions of proxied routes are enforced by
+ * the downstream service (BR-D1B-09).
  */
+@PermissionExempt()
 @Controller(':service')
 export class GatewayController {
   constructor(private readonly gatewayService: GatewayService) {}

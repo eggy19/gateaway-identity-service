@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { ActorScope } from '../../../shared/auth/actor-scope';
 import { buildPaginated, PaginatedResult } from '../../../shared/responses/paginated';
 import { BranchService } from '../../branch/services/branch.service';
 import { TenantService } from '../../tenant/services/tenant.service';
@@ -21,12 +22,21 @@ export class LoginHistoryService {
     private readonly branchService: BranchService,
   ) {}
 
-  async search(query: LoginHistoryQueryDto): Promise<PaginatedResult<LoginHistoryResponseDto>> {
+  async search(
+    query: LoginHistoryQueryDto,
+    actor: ActorScope,
+  ): Promise<PaginatedResult<LoginHistoryResponseDto>> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
+    // Non-platform actors only see their own tenant; a `tenantId` filter is ignored (BR-D1C-02).
+    // Without an active tenant a non-platform actor sees nothing.
+    if (!actor.isPlatform && !actor.tenantId) {
+      return buildPaginated([], 0, page, limit);
+    }
+
     const [entities, total] = await this.loginHistoryRepository.search(
-      this.buildFilters(query),
+      this.buildFilters(query, actor),
       page,
       limit,
     );
@@ -48,10 +58,10 @@ export class LoginHistoryService {
     return buildPaginated(items, total, page, limit);
   }
 
-  private buildFilters(query: LoginHistoryQueryDto): LoginHistoryFilters {
+  private buildFilters(query: LoginHistoryQueryDto, actor: ActorScope): LoginHistoryFilters {
     return {
       userId: query.userId,
-      tenantId: query.tenantId,
+      tenantId: actor.isPlatform ? query.tenantId : (actor.tenantId ?? undefined),
       branchId: query.branchId,
       loginResult: query.loginResult,
       dateFrom: query.dateFrom ? new Date(query.dateFrom) : undefined,

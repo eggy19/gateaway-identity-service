@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
+import { ActorScope, canAccessTenant, FORBIDDEN_MESSAGE } from '../../../shared/auth/actor-scope';
 import { BranchService } from '../../branch/services/branch.service';
 import { TenantService } from '../../tenant/services/tenant.service';
 import type { AuthInstance } from '../../../shared/auth/better-auth';
@@ -48,7 +50,12 @@ export class UserService {
    * cannot share the TypeORM transaction), so the custom-table writes run in a
    * transaction with best-effort compensation if they fail.
    */
-  async create(dto: CreateUserDto, actorId: string): Promise<UserEntity> {
+  async create(dto: CreateUserDto, actor: ActorScope): Promise<UserEntity> {
+    // Tenant scope (BR-D1C-02): a non-platform actor may only create users in their own tenant.
+    if (!canAccessTenant(actor, dto.tenantId)) {
+      throw new ForbiddenException(FORBIDDEN_MESSAGE);
+    }
+    const actorId = actor.userId;
     const tenant = await this.tenantService.findActiveByIdOrThrow(dto.tenantId);
     const branch = await this.branchService.findActiveByIdOrThrow(dto.branchId);
     if (branch.tenantId !== tenant.id) {
@@ -93,17 +100,57 @@ export class UserService {
     return this.findByIdOrThrow(userId);
   }
 
-  async updateProfile(id: string, dto: UpdateUserDto): Promise<UserEntity> {
-    await this.findByIdOrThrow(id);
+  async updateProfile(id: string, dto: UpdateUserDto, actor: ActorScope): Promise<UserEntity> {
+    await this.findByIdInScopeOrThrow(id, actor);
     await this.userRepository.updateProfile(id, { name: dto.name });
     return this.findByIdOrThrow(id);
   }
 
-  /** Activate / deactivate a user (PATCH /users/:id/status). */
-  async updateStatus(id: string, dto: UpdateUserStatusDto): Promise<UserEntity> {
-    await this.findByIdOrThrow(id);
-    await this.userRepository.updateProfile(id, { status: dto.status });
-    return this.findByIdOrThrow(id);
+  /**
+   * Activate / deactivate a user (PATCH /users/:id/status). Plain write: scope and the
+   * business rules (self, hierarchy, last OWNER) are enforced by `UserAdminService`.
+   */
+  async updateStatus(
+    id: string,
+    dto: UpdateUserStatusDto,
+    manager?: EntityManager,
+  ): Promise<UserEntity> {
+    await this.findByIdOrThrow(id, manager);
+    await this.userRepository.updateProfile(id, { status: dto.status }, manager);
+    return this.findByIdOrThrow(id, manager);
+  }
+
+  /**
+   * Whether the user has a live `user_branch` in the actor's tenant (BR-D1C-02); always true
+   * for the platform. Callers translate `false` into 404 (BR-D1C-05).
+   */
+  async isUserInScope(userId: string, actor: ActorScope): Promise<boolean> {
+    if (actor.isPlatform) return true;
+    const scopeBranchIds = await this.scopeBranchIds(actor);
+    const assignments = await this.userBranchRepository.findByUser(userId);
+    return assignments.some((assignment) => scopeBranchIds.has(assignment.branchId));
+  }
+
+  /** Users that are in the actor's tenant scope; 404 for missing or out-of-scope users. */
+  async findByIdInScopeOrThrow(id: string, actor: ActorScope): Promise<UserEntity> {
+    const user = await this.findByIdOrThrow(id);
+    if (!(await this.isUserInScope(id, actor))) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+    return user;
+  }
+
+  /** Ids of users in the actor's tenant, or `null` for the platform (no restriction). */
+  async findUserIdsInScope(actor: ActorScope): Promise<string[] | null> {
+    if (actor.isPlatform) return null;
+    const scopeBranchIds = await this.scopeBranchIds(actor);
+    const assignments = await this.userBranchRepository.findByBranchIds([...scopeBranchIds]);
+    return [...new Set(assignments.map((assignment) => assignment.userId))];
+  }
+
+  private async scopeBranchIds(actor: ActorScope): Promise<Set<string>> {
+    const branches = await this.branchService.findAllInScope(actor);
+    return new Set(branches.map((branch) => branch.id));
   }
 
   findAll(): Promise<UserEntity[]> {
@@ -119,24 +166,32 @@ export class UserService {
    * primary branch/tenant. Branch and tenant names are resolved through their
    * owning services (module-ownership rule), not by cross-module joins.
    */
-  async findAllWithContext(): Promise<UserWithContext[]> {
-    const [users, assignments, securities, branches, tenants] = await Promise.all([
+  async findAllWithContext(actor: ActorScope): Promise<UserWithContext[]> {
+    const [allUsers, allAssignments, securities, branches, tenants] = await Promise.all([
       this.userRepository.findAll(),
       this.userBranchRepository.findAll(),
       this.userSecurityRepository.findAll(),
-      this.branchService.findAll(),
-      this.tenantService.findAll(),
+      this.branchService.findAllInScope(actor),
+      this.tenantService.findAllInScope(actor),
     ]);
 
     const branchById = new Map(branches.map((branch) => [branch.id, branch]));
     const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]));
     const securityByUser = new Map(securities.map((security) => [security.userId, security]));
+    // Non-platform actors only see assignments in their tenant, and only users that have one
+    // (BR-D1C-02); this also keeps another tenant's branch names out of the response.
+    const assignments = actor.isPlatform
+      ? allAssignments
+      : allAssignments.filter((assignment) => branchById.has(assignment.branchId));
     const assignmentsByUser = new Map<string, typeof assignments>();
     for (const assignment of assignments) {
       const list = assignmentsByUser.get(assignment.userId) ?? [];
       list.push(assignment);
       assignmentsByUser.set(assignment.userId, list);
     }
+    const users = actor.isPlatform
+      ? allUsers
+      : allUsers.filter((user) => assignmentsByUser.has(user.id));
 
     return users.map((user) => {
       const userAssignments = assignmentsByUser.get(user.id) ?? [];
@@ -156,8 +211,8 @@ export class UserService {
   }
 
   /** Admin detail: user + security state + every branch assignment with names. */
-  async findDetail(id: string): Promise<UserDetailContext> {
-    const user = await this.findByIdOrThrow(id);
+  async findDetail(id: string, actor: ActorScope): Promise<UserDetailContext> {
+    const user = await this.findByIdInScopeOrThrow(id, actor);
     const [security, assignments, tenants] = await Promise.all([
       this.userSecurityRepository.findByUserId(id),
       this.userBranchRepository.findByUser(id),
@@ -168,6 +223,7 @@ export class UserService {
     const branches: UserBranchWithContext[] = [];
     for (const assignment of assignments) {
       const branch = await this.branchService.findByIdOrThrow(assignment.branchId);
+      if (!canAccessTenant(actor, branch.tenantId)) continue;
       branches.push({
         assignment,
         branch,
@@ -200,8 +256,8 @@ export class UserService {
     return { tenantId: branch.tenantId, branchId: branch.id };
   }
 
-  async findByIdOrThrow(id: string): Promise<UserEntity> {
-    const user = await this.userRepository.findById(id);
+  async findByIdOrThrow(id: string, manager?: EntityManager): Promise<UserEntity> {
+    const user = await this.userRepository.findById(id, manager);
     if (!user) {
       throw new NotFoundException(`User ${id} not found`);
     }

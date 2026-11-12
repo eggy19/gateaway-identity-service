@@ -40,6 +40,19 @@ export class TenantRepository {
     return this.scoped(manager).find({ order: { createdAt: 'DESC' } });
   }
 
+  /** `SELECT ... FOR UPDATE` on the given tenant rows; must run inside a transaction. */
+  async lockByIds(ids: string[], manager: EntityManager): Promise<void> {
+    if (ids.length === 0) return;
+    await manager
+      .getRepository(TenantEntity)
+      .createQueryBuilder('tenant')
+      .select('tenant.id')
+      .where('tenant.id IN (:...ids)', { ids })
+      .orderBy('tenant.id', 'ASC')
+      .setLock('pessimistic_write')
+      .getMany();
+  }
+
   existsByCode(code: string, manager?: EntityManager): Promise<boolean> {
     return this.scoped(manager).existsBy({ code });
   }

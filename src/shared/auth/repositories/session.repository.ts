@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, MoreThan, Repository } from 'typeorm';
+import { FindOptionsWhere, In, MoreThan, Repository } from 'typeorm';
 import { SessionEntity } from '../entities/session.entity';
 
 export interface SessionListFilters {
   readonly userId?: string;
+  /** Restricts to these users (tenant scope); ignored when `userId` is set. */
+  readonly userIds?: string[];
   readonly activeOnly: boolean;
 }
 
@@ -46,6 +48,8 @@ export class SessionRepository {
     const where: FindOptionsWhere<SessionEntity> = {};
     if (filters.userId) {
       where.userId = filters.userId;
+    } else if (filters.userIds) {
+      where.userId = In(filters.userIds);
     }
     if (filters.activeOnly) {
       where.expiresAt = MoreThan(new Date());

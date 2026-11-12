@@ -71,6 +71,12 @@ Gateway **tidak** memetakan route proxy ke permission. Enforcement permission un
 route proxy dilakukan di service tujuan (default-deny) berdasarkan claim `permissions`
 (BR-D1B-09). Service tujuan memutuskan akses berdasarkan **permission**, bukan nama role.
 
+Satu-satunya pengecekan permission di Gateway adalah untuk endpoint **miliknya sendiri**
+(`tenants`, `branches`, `users`, `admin/sessions`, `admin/login-history`) memakai permission
+`identity.*` (default-deny, G1/BR-D1C-01): tanpa permission 403, data di luar tenant aktor 404.
+Route proxy `/api/v1/<service>/*`, `/auth/*` milik sendiri, `/sessions` milik sendiri, dan `/health`
+tidak dicek di sini. Detail: `4-endpoint-spec.md` bagian Authorization Rules. Kontrak JWT ke downstream tidak berubah.
+
 Roles dan permission dihitung oleh **satu resolver konteks aktif** (`ActiveContextService`,
 `src/modules/role/services/active-context.service.ts`) yang juga dipakai `/auth/me` dan
 login (BR-D1B-01/11). Resolver dijalankan di setiap request, tanpa cache (BR-D1B-06).

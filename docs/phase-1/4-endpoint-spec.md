@@ -197,14 +197,51 @@ Protected Endpoint
 
 # Authorization Rules
 
-Phase 1 belum menggunakan RBAC.
+Phase 1 belum menggunakan RBAC. **Diperbarui (Phase 2, G1):** endpoint milik Gateway kini dijaga
+permission `identity.*` (default-deny) dan dibatasi scope tenant. Sumber aturan:
+`dokumentasi/billing/prasyarat-kasir-spec.md` §5.7 (BR-D1C-01..06), §7.5.2, §8.3.
 
-Authorization hanya melakukan validasi:
+Validasi dasar (semua endpoint terproteksi):
 
 * User telah login
 * User aktif
-* Tenant aktif
-* Branch aktif
+
+Guard permission (`PermissionGuard`, dijalankan setelah `SessionGuard`):
+
+* Setiap handler wajib `@RequirePermission('identity.*')`. Tanpa deklarasi → 403.
+* Pengecualian: `@Public()` (login, `/health`), `/auth/*` milik diri sendiri
+  (`me`, `session`, `logout`), `/sessions` milik diri sendiri, dan proxy downstream
+  (permission ditegakkan di service tujuan, BR-D1B-09).
+* Permission dihitung ulang dari resolver konteks aktif (`ActiveContextService`) di setiap request.
+* Tanpa permission → **403** `{ success:false, message:"Anda tidak memiliki izin untuk aksi ini", error:"ForbiddenException", ... }`.
+
+Pemetaan endpoint → permission:
+
+| Endpoint | Permission |
+| -------- | ---------- |
+| `GET /tenants`, `GET /tenants/:id` | `identity.tenant.read` |
+| `POST /tenants`, `PUT /tenants/:id` | `identity.tenant.create` / `identity.tenant.update` (hanya role platform, BR-D1C-04) |
+| `GET /branches`, `GET /branches/:id` | `identity.branch.read` |
+| `POST /branches`, `PUT /branches/:id` | `identity.branch.create` / `identity.branch.update` |
+| `GET /users`, `GET /users/:id` | `identity.user.read` |
+| `POST /users` | `identity.user.create` |
+| `PUT /users/:id`, `PATCH /users/:id/status` | `identity.user.update` |
+| `POST /users/:id/unlock` | `identity.user.unlock` |
+| `GET /admin/sessions` / `DELETE /admin/sessions/:id` | `identity.session.read` / `identity.session.revoke` |
+| `GET /admin/login-history` | `identity.login_history.read` |
+
+Scope tenant (BR-D1C-02/03/05):
+
+* Aktor tanpa role `PLATFORM` dibatasi ke tenant aktif; `SUPER_ADMIN` tidak dibatasi dan boleh memakai filter `tenantId`
+  (`GET /branches`, `GET /admin/login-history`).
+* Data di luar scope → **404** (tenant, cabang, user, session). Filter `tenantId` milik tenant lain pada
+  `GET /branches` dan `GET /admin/login-history` oleh aktor non-platform diabaikan (hasil tetap tenant aktor).
+* `POST /users` dan `POST /branches` dengan `tenantId` tenant lain oleh aktor non-platform → **403**.
+* `PATCH /users/:id/status` dengan `inactive` pada diri sendiri → **422** (BR-D1C-06).
+* KP-33: aktor yang bukan `OWNER`/platform (mis. `ADMIN`) tidak boleh mengubah status atau `unlock` user yang memegang
+  `OWNER`/`ADMIN`/`SUPER_ADMIN` → **403**. Menonaktifkan `OWNER` aktif terakhir sebuah tenant → **409**.
+* KP-22 (BR-D1D-10): `OWNER` yang membuat cabang lewat `POST /branches` otomatis mendapat `user_branch` (non-primary)
+  dan `user_role` `OWNER` di cabang itu dalam transaksi yang sama.
 
 ---
 

@@ -16,6 +16,7 @@ import {
   CurrentUser,
 } from '../../../shared/auth/decorators/current-user.decorator';
 import { Public } from '../../../shared/auth/decorators/public.decorator';
+import { PermissionExempt } from '../../../shared/auth/decorators/require-permission.decorator';
 import { ResponseMessage } from '../../../shared/decorators/response-message.decorator';
 import type { SessionInfo, SessionUser } from '../../../shared/auth/auth.types';
 import { UserEntity } from '../../../shared/auth/entities/user.entity';
@@ -34,6 +35,8 @@ function extractContext(req: Request): LoginContext {
   };
 }
 
+/** Caller's own login/session endpoints: no `identity.*` permission (BR-D1C-01). */
+@PermissionExempt()
 @Controller('auth')
 export class AuthController {
   constructor(

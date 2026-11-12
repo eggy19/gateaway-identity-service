@@ -6,7 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
+import { ActorScope, canAccessTenant } from '../../../shared/auth/actor-scope';
 import { BranchService } from '../../branch/services/branch.service';
 import { CreateTenantDto } from '../dto/create-tenant.dto';
 import { UpdateTenantDto } from '../dto/update-tenant.dto';
@@ -49,20 +50,49 @@ export class TenantService {
     });
   }
 
-  async update(id: string, dto: UpdateTenantDto, actorId: string): Promise<TenantEntity> {
-    const tenant = await this.findByIdOrThrow(id);
+  async update(id: string, dto: UpdateTenantDto, actor: ActorScope): Promise<TenantEntity> {
+    // Defence in depth: only the platform holds identity.tenant.update, but scope is checked anyway.
+    const tenant = await this.findByIdInScopeOrThrow(id, actor);
     if (dto.name !== undefined) {
       tenant.name = dto.name;
     }
     if (dto.status !== undefined) {
       tenant.status = dto.status;
     }
-    tenant.updatedBy = actorId;
+    tenant.updatedBy = actor.userId;
     return this.tenantRepository.save(tenant);
   }
 
   findAll(): Promise<TenantEntity[]> {
     return this.tenantRepository.findAll();
+  }
+
+  /** Tenant scope (BR-D1C-02/03): the actor's own tenant, or every tenant for the platform. */
+  async findAllInScope(actor: ActorScope): Promise<TenantEntity[]> {
+    if (actor.isPlatform) {
+      return this.tenantRepository.findAll();
+    }
+    if (!actor.tenantId) {
+      return [];
+    }
+    const tenant = await this.tenantRepository.findById(actor.tenantId);
+    return tenant ? [tenant] : [];
+  }
+
+  /** Out-of-scope tenants are reported as missing (404), never 403 (BR-D1C-05). */
+  async findByIdInScopeOrThrow(id: string, actor: ActorScope): Promise<TenantEntity> {
+    if (!canAccessTenant(actor, id)) {
+      throw new NotFoundException(`Tenant ${id} not found`);
+    }
+    return this.findByIdOrThrow(id);
+  }
+
+  /**
+   * Row-locks the tenants (ids sorted, so concurrent callers lock in the same order) inside
+   * the caller's transaction. Serialises the "last active OWNER" check (BR-D1D-03).
+   */
+  lockByIds(ids: string[], manager: EntityManager): Promise<void> {
+    return this.tenantRepository.lockByIds([...ids].sort(), manager);
   }
 
   /** Active-context resolver: soft-deleted tenants are included (caller inspects `deletedAt`). */

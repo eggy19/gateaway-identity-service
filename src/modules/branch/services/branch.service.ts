@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
+import { ActorScope, canAccessTenant } from '../../../shared/auth/actor-scope';
 import { TenantEntity } from '../../tenant/entities/tenant.entity';
 import { TenantService } from '../../tenant/services/tenant.service';
 import { CreateBranchDto } from '../dto/create-branch.dto';
@@ -29,10 +30,14 @@ export class BranchService {
    * Create Branch flow (Business Flow §5): validate the tenant is active, reject
    * duplicate code within the tenant, then create the branch.
    */
-  async create(dto: CreateBranchDto, actorId: string): Promise<BranchEntity> {
+  async create(
+    dto: CreateBranchDto,
+    actorId: string,
+    manager?: EntityManager,
+  ): Promise<BranchEntity> {
     await this.tenantService.findActiveByIdOrThrow(dto.tenantId);
 
-    if (await this.branchRepository.existsByTenantAndCode(dto.tenantId, dto.code)) {
+    if (await this.branchRepository.existsByTenantAndCode(dto.tenantId, dto.code, manager)) {
       throw new ConflictException(`Branch code "${dto.code}" already exists for this tenant`);
     }
 
@@ -45,6 +50,7 @@ export class BranchService {
         createdBy: actorId,
         updatedBy: actorId,
       }),
+      manager,
     );
   }
 
@@ -71,20 +77,42 @@ export class BranchService {
     );
   }
 
-  async update(id: string, dto: UpdateBranchDto, actorId: string): Promise<BranchEntity> {
-    const branch = await this.findByIdOrThrow(id);
+  async update(id: string, dto: UpdateBranchDto, actor: ActorScope): Promise<BranchEntity> {
+    const branch = await this.findByIdInScopeOrThrow(id, actor);
     if (dto.name !== undefined) {
       branch.name = dto.name;
     }
     if (dto.status !== undefined) {
       branch.status = dto.status;
     }
-    branch.updatedBy = actorId;
+    branch.updatedBy = actor.userId;
     return this.branchRepository.save(branch);
   }
 
   findAll(): Promise<BranchEntity[]> {
     return this.branchRepository.findAll();
+  }
+
+  /**
+   * Tenant scope (BR-D1C-02/03). Non-platform actors always get their own tenant's branches
+   * (a foreign `tenantId` filter is ignored); the platform may filter by `tenantId`.
+   */
+  async findAllInScope(actor: ActorScope, tenantId?: string): Promise<BranchEntity[]> {
+    if (actor.isPlatform) {
+      return tenantId
+        ? this.branchRepository.findByTenant(tenantId)
+        : this.branchRepository.findAll();
+    }
+    return actor.tenantId ? this.branchRepository.findByTenant(actor.tenantId) : [];
+  }
+
+  /** Out-of-scope branches are reported as missing (404), never 403 (BR-D1C-05). */
+  async findByIdInScopeOrThrow(id: string, actor: ActorScope): Promise<BranchEntity> {
+    const branch = await this.findByIdOrThrow(id);
+    if (!canAccessTenant(actor, branch.tenantId)) {
+      throw new NotFoundException(`Branch ${id} not found`);
+    }
+    return branch;
   }
 
   findByTenant(tenantId: string): Promise<BranchEntity[]> {

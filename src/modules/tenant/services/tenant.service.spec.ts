@@ -57,6 +57,78 @@ describe('TenantService', () => {
     });
   });
 
+  describe('tenant scope (BR-D1C-02/03/05)', () => {
+    const platform = { userId: 'sa', tenantId: 'tA', isPlatform: true, roles: [] };
+    const owner = { userId: 'own', tenantId: 'tA', isPlatform: false, roles: ['OWNER'] };
+
+    it('non-platform actor lists only their own tenant (AC-D1C-06)', async () => {
+      const tenantA = { id: 'tA' } as TenantEntity;
+      tenantRepository.findById.mockResolvedValue(tenantA);
+      const findAll = jest.fn();
+      (tenantRepository as unknown as { findAll: jest.Mock }).findAll = findAll;
+
+      await expect(service.findAllInScope(owner)).resolves.toEqual([tenantA]);
+      expect(tenantRepository.findById).toHaveBeenCalledWith('tA');
+      expect(findAll).not.toHaveBeenCalled();
+    });
+
+    it('platform actor lists every tenant', async () => {
+      const all = [{ id: 'tA' }, { id: 'tB' }] as TenantEntity[];
+      (tenantRepository as unknown as { findAll: jest.Mock }).findAll = jest
+        .fn()
+        .mockResolvedValue(all);
+
+      await expect(service.findAllInScope(platform)).resolves.toEqual(all);
+    });
+
+    it('non-platform actor without an active tenant sees nothing', async () => {
+      await expect(service.findAllInScope({ ...owner, tenantId: null })).resolves.toEqual([]);
+    });
+
+    it('another tenant is 404 for a non-platform actor, without touching the database', async () => {
+      await expect(service.findByIdInScopeOrThrow('tB', owner)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(tenantRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('own tenant and (for platform) any tenant are returned', async () => {
+      tenantRepository.findById.mockResolvedValue({ id: 'x' } as TenantEntity);
+
+      await expect(service.findByIdInScopeOrThrow('tA', owner)).resolves.toMatchObject({ id: 'x' });
+      await expect(service.findByIdInScopeOrThrow('tB', platform)).resolves.toMatchObject({
+        id: 'x',
+      });
+    });
+
+    it('update is scope-checked: another tenant is 404 and nothing is saved', async () => {
+      await expect(service.update('tB', { name: 'x' }, owner)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(tenantRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('update by the platform saves and records the actor id', async () => {
+      tenantRepository.findById.mockResolvedValue({ id: 'tB', name: 'old' } as TenantEntity);
+
+      await service.update('tB', { name: 'new' }, platform);
+
+      expect(tenantRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'new', updatedBy: 'sa' }),
+      );
+    });
+
+    it('lockByIds locks the tenants in sorted order through the repository', async () => {
+      const lockByIds = jest.fn().mockResolvedValue(undefined);
+      (tenantRepository as unknown as { lockByIds: jest.Mock }).lockByIds = lockByIds;
+      const manager = {} as never;
+
+      await service.lockByIds(['b', 'a'], manager);
+
+      expect(lockByIds).toHaveBeenCalledWith(['a', 'b'], manager);
+    });
+  });
+
   describe('findByIdOrThrow', () => {
     it('throws when the tenant does not exist', async () => {
       tenantRepository.findById.mockResolvedValue(null);

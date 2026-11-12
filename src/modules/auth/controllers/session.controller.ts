@@ -4,12 +4,15 @@ import {
   CurrentSession,
   CurrentUser,
 } from '../../../shared/auth/decorators/current-user.decorator';
+import { PermissionExempt } from '../../../shared/auth/decorators/require-permission.decorator';
 import { ResponseMessage } from '../../../shared/decorators/response-message.decorator';
 import type { SessionInfo, SessionUser } from '../../../shared/auth/auth.types';
 import { SessionResponseDto } from '../dto/session-response.dto';
 import { SessionMapper } from '../mappers/session.mapper';
 import { AuthService } from '../services/auth.service';
 
+/** Caller's own sessions only: no `identity.*` permission (BR-D1C-01). */
+@PermissionExempt()
 @Controller('sessions')
 export class SessionController {
   constructor(private readonly authService: AuthService) {}

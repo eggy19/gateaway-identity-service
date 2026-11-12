@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { UserBranchEntity } from '../entities/user-branch.entity';
 
 /**
@@ -28,6 +28,12 @@ export class UserBranchRepository {
 
   findByUser(userId: string, manager?: EntityManager): Promise<UserBranchEntity[]> {
     return this.scoped(manager).find({ where: { userId } });
+  }
+
+  /** Live assignments to any of the given branches (tenant scope lookups). */
+  findByBranchIds(branchIds: string[]): Promise<UserBranchEntity[]> {
+    if (branchIds.length === 0) return Promise.resolve([]);
+    return this.repository.find({ where: { branchId: In(branchIds) } });
   }
 
   findAll(): Promise<UserBranchEntity[]> {

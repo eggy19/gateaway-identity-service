@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BranchModule } from './modules/branch/branch.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
 import { HealthModule } from './modules/health/health.module';
+import { IdentityAdminModule } from './modules/identity-admin/identity-admin.module';
 import { RoleModule } from './modules/role/role.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
@@ -34,6 +35,7 @@ import { RequestLoggerMiddleware } from './shared/middleware/request-logger.midd
     RoleModule,
     UserModule,
     AuthModule,
+    IdentityAdminModule,
     GatewayModule, // must be last — wildcard routes must not shadow specific routes
   ],
   providers: [

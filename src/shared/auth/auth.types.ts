@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import type { ActiveContext } from '../../modules/role/services/active-context.service';
 import type { UserStatus } from '../../modules/user/enums/user-status.enum';
 import type { AuthInstance } from './better-auth';
 
@@ -21,4 +22,6 @@ export type SessionInfo = SessionResult['session'];
 export interface AuthedRequest extends Request {
   user?: SessionUser;
   session?: SessionInfo;
+  /** Resolved once by PermissionGuard for Gateway-owned endpoints (BR-D1B-01). */
+  activeContext?: ActiveContext;
 }

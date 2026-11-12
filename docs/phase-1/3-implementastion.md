@@ -142,9 +142,10 @@ Seluruh proses login, logout, dan validasi session mengikuti mekanisme Better Au
 
 ## Authorization
 
-Phase 1 belum mengimplementasikan RBAC.
+Phase 1 belum mengimplementasikan RBAC. (Diperbarui Phase 2: endpoint milik Gateway kini dijaga
+`PermissionGuard` `identity.*` + scope tenant, lihat `4-endpoint-spec.md` Authorization Rules.)
 
-Authorization hanya melakukan validasi:
+Authorization di Phase 1 hanya melakukan validasi:
 
 * User Login
 * User Active

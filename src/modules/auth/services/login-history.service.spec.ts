@@ -1,3 +1,4 @@
+import type { ActorScope } from '../../../shared/auth/actor-scope';
 import { BranchService } from '../../branch/services/branch.service';
 import { TenantService } from '../../tenant/services/tenant.service';
 import { UserService } from '../../user/services/user.service';
@@ -13,6 +14,19 @@ describe('LoginHistoryService', () => {
   let tenantService: jest.Mocked<Pick<TenantService, 'findAll'>>;
   let branchService: jest.Mocked<Pick<BranchService, 'findAll'>>;
   let service: LoginHistoryService;
+
+  const platform: ActorScope = {
+    userId: 'sa-1',
+    tenantId: 'tenant-A',
+    isPlatform: true,
+    roles: [],
+  };
+  const tenantAdmin: ActorScope = {
+    userId: 'admin-1',
+    tenantId: 'tenant-A',
+    isPlatform: false,
+    roles: ['ADMIN'],
+  };
 
   const buildEntry = (overrides: Partial<LoginHistoryEntity> = {}): LoginHistoryEntity =>
     ({
@@ -49,7 +63,7 @@ describe('LoginHistoryService', () => {
     tenantService.findAll.mockResolvedValue([{ id: 'tenant-1', name: 'Klinik A' } as never]);
     branchService.findAll.mockResolvedValue([{ id: 'branch-1', name: 'Cabang Utama' } as never]);
 
-    const result = await service.search(new LoginHistoryQueryDto());
+    const result = await service.search(new LoginHistoryQueryDto(), platform);
 
     expect(result.items[0]).toMatchObject({
       userName: 'Alice',
@@ -66,7 +80,7 @@ describe('LoginHistoryService', () => {
       1,
     ]);
 
-    const result = await service.search(new LoginHistoryQueryDto());
+    const result = await service.search(new LoginHistoryQueryDto(), platform);
 
     expect(userService.findByIds).toHaveBeenCalledWith([]);
     expect(result.items[0]).toMatchObject({ userName: null, tenantName: null, branchName: null });
@@ -79,7 +93,7 @@ describe('LoginHistoryService', () => {
       loginResult: LoginResult.InvalidPassword,
     });
 
-    await service.search(query);
+    await service.search(query, platform);
 
     const [filters, page, limit] = repository.search.mock.calls[0];
     expect(page).toBe(1);
@@ -88,5 +102,37 @@ describe('LoginHistoryService', () => {
     expect(filters.dateFrom).toEqual(new Date('2026-07-01'));
     expect(filters.dateTo?.getHours()).toBe(23);
     expect(filters.dateTo?.getMinutes()).toBe(59);
+  });
+
+  it('platform actor may filter by tenantId (BR-D1C-03)', async () => {
+    const query = Object.assign(new LoginHistoryQueryDto(), { tenantId: 'tenant-B' });
+
+    await service.search(query, platform);
+
+    expect(repository.search.mock.calls[0][0].tenantId).toBe('tenant-B');
+  });
+
+  it('forces the actor tenant and ignores a foreign tenantId filter (AC-D1C-08)', async () => {
+    const query = Object.assign(new LoginHistoryQueryDto(), { tenantId: 'tenant-B' });
+
+    await service.search(query, tenantAdmin);
+
+    expect(repository.search.mock.calls[0][0].tenantId).toBe('tenant-A');
+  });
+
+  it('forces the actor tenant when no tenantId filter is given', async () => {
+    await service.search(new LoginHistoryQueryDto(), tenantAdmin);
+
+    expect(repository.search.mock.calls[0][0].tenantId).toBe('tenant-A');
+  });
+
+  it('returns nothing for a non-platform actor without an active tenant', async () => {
+    const result = await service.search(new LoginHistoryQueryDto(), {
+      ...tenantAdmin,
+      tenantId: null,
+    });
+
+    expect(result.items).toEqual([]);
+    expect(repository.search).not.toHaveBeenCalled();
   });
 });
