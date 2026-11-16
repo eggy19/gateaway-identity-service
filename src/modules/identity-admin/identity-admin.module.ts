@@ -5,8 +5,10 @@ import { RoleModule } from '../role/role.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { UserController } from '../user/controllers/user.controller';
 import { UserModule } from '../user/user.module';
+import { UserRoleController } from './controllers/user-role.controller';
 import { BranchCreationService } from './services/branch-creation.service';
 import { UserAdminService } from './services/user-admin.service';
+import { UserRoleAdminService } from './services/user-role-admin.service';
 
 /**
  * Hosts the Gateway admin endpoints that combine user/branch data with RBAC data
@@ -15,7 +17,7 @@ import { UserAdminService } from './services/user-admin.service';
  */
 @Module({
   imports: [UserModule, BranchModule, TenantModule, RoleModule],
-  controllers: [BranchController, UserController],
-  providers: [UserAdminService, BranchCreationService],
+  controllers: [BranchController, UserController, UserRoleController],
+  providers: [UserAdminService, BranchCreationService, UserRoleAdminService],
 })
 export class IdentityAdminModule {}

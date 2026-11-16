@@ -107,6 +107,88 @@ export class UserRoleRepository {
   }
 
   /**
+   * Assignments of a user with their role, newest first (§8.4). Revoked rows are included only
+   * when `includeRevoked`; `tenantId` limits the result to one tenant (BR-D1D-11).
+   */
+  findByUser(
+    userId: string,
+    options: { includeRevoked: boolean; tenantId?: string },
+  ): Promise<UserRoleEntity[]> {
+    return this.repository.find({
+      where: { userId, ...(options.tenantId ? { tenantId: options.tenantId } : {}) },
+      relations: { role: true },
+      withDeleted: options.includeRevoked,
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * A live (not revoked) assignment with its role, or `null`. The role is loaded even when it
+   * was soft-deleted, so a live assignment of a deleted role can still be revoked.
+   */
+  findLiveById(id: string, manager?: EntityManager): Promise<UserRoleEntity | null> {
+    return this.scoped(manager)
+      .createQueryBuilder('ur')
+      .withDeleted()
+      .innerJoinAndSelect('ur.role', 'r')
+      .where('ur.id = :id', { id })
+      .andWhere('ur.deletedAt IS NULL')
+      .getOne();
+  }
+
+  /** Whether the user already holds a live assignment of the role at the branch (BR-D1D-04). */
+  existsLive(
+    userId: string,
+    roleId: string,
+    branchId: string | null,
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    return this.scoped(manager).exists({
+      where: { userId, roleId, branchId: branchId ?? IsNull() },
+    });
+  }
+
+  /**
+   * Live `OWNER` assignments in the tenant, other than `excludeAssignmentId`, whose user has
+   * status `active` (BR-D1D-03, KP-32 option b). Counted per assignment, so an OWNER who also
+   * holds OWNER in another branch still counts after one of the two is revoked.
+   */
+  async countOtherActiveOwnerAssignments(
+    tenantId: string,
+    excludeAssignmentId: string,
+    manager?: EntityManager,
+  ): Promise<number> {
+    const row = await this.scoped(manager)
+      .createQueryBuilder('ur')
+      .select('COUNT(ur.id)', 'count')
+      .innerJoin(RoleEntity, 'r', 'r.id = ur.roleId AND r.deletedAt IS NULL AND r.code = :owner', {
+        owner: 'OWNER',
+      })
+      .innerJoin(UserEntity, 'u', 'u.id = ur.userId AND u.status = :active', {
+        active: UserStatus.Active,
+      })
+      .where('ur.tenantId = :tenantId', { tenantId })
+      .andWhere('ur.id <> :excludeAssignmentId', { excludeAssignmentId })
+      .andWhere('ur.deletedAt IS NULL')
+      .getRawOne<{ count: string }>();
+    return Number(row?.count ?? 0);
+  }
+
+  /**
+   * Revoke = soft delete only (BR-D1A-09): sets `deleted_at/by` and `updated_by`; no other column
+   * changes. Returns the number of rows revoked (0 when it was already revoked).
+   */
+  async softRevoke(id: string, actorId: string, manager?: EntityManager): Promise<number> {
+    const result = await this.scoped(manager)
+      .createQueryBuilder()
+      .update()
+      .set({ deletedAt: () => 'now()', deletedBy: actorId, updatedBy: actorId })
+      .where('id = :id AND deleted_at IS NULL', { id })
+      .execute();
+    return result.affected ?? 0;
+  }
+
+  /**
    * Effective grants of a user in the given active tenant/branch (BR-D1B-10): only live
    * `user_role`, active live `role`, live `role_permission`/`permission`, and scope-consistent
    * rows (BRANCH role -> same tenant+branch; PLATFORM role -> NULL tenant and branch).

@@ -80,6 +80,44 @@ Fungsi:
 
 ---
 
+# Role & Assignment API (Phase 2, T-22)
+
+Sumber aturan: `dokumentasi/billing/prasyarat-kasir-spec.md` §5.8 (BR-D1D-01..13), §8.4, §9.8.
+Semua response memakai envelope standar (`{ success, message, data }`). Peran dan permission hanya
+bisa dibaca lewat API; tidak ada `POST/PUT/PATCH/DELETE /roles`, `/permissions`, atau
+`PUT/PATCH /users/:id/roles/:assignmentId` (404, route tidak ada).
+
+| Endpoint | Permission | Request | Response `data` |
+| -------- | ---------- | ------- | --------------- |
+| `GET /roles` | `identity.role.read` | – | `[{ id, code, name, description, scope, isSystem, status }]`; aktor non-platform tidak melihat role `PLATFORM` |
+| `GET /roles/:id` | `identity.role.read` | – | role + `permissions: [code]`; role tidak terlihat → 404 |
+| `GET /permissions` | `identity.role.read` | – | `[{ code, service, resource, action, description }]`; permission khusus platform disembunyikan dari non-platform |
+| `GET /users/:id/roles?includeRevoked=false` | `identity.user_role.read` | query `includeRevoked` = `true`/`false` | `[{ id, roleId, roleCode, roleName, tenantId, branchId, branchName, assignedAt, assignedBy, revokedAt, revokedBy }]`, terbaru dulu. `assignedBy`/`revokedBy` = id user. Non-platform hanya melihat assignment di tenant aktornya |
+| `POST /users/:id/roles` | `identity.user_role.assign` | `{ "roleId": uuid, "branchId": uuid \| null }` (`null` hanya untuk role `PLATFORM`; field lain → 400) | assignment yang dibuat, **201** |
+| `DELETE /users/:id/roles/:assignmentId` | `identity.user_role.revoke` | – | `{ "revoked": true }`, **200** (soft delete, baris tidak diubah selain `deleted_at/by`, `updated_*`) |
+
+Urutan pemeriksaan assign (BR-D1D-12), kode error di field `error` envelope:
+
+1. body tidak valid / field di luar `roleId`,`branchId` → 400
+2. tanpa `identity.user_role.assign` (branch aktif) → 403 (`PermissionGuard`)
+3. user `:id` tanpa `user_branch` di tenant aktor → 404 (kecuali `SUPER_ADMIN`)
+4. user target = aktor sendiri → 403 (BR-D1D-08)
+5. role tidak ada / tidak terlihat (mis. `SUPER_ADMIN` oleh non-platform) → 404; role nonaktif → 422
+6. role `PLATFORM` + `branchId` terisi, atau role `BRANCH` tanpa `branchId` → 422
+7. branch tidak ada / milik tenant lain → 404
+8. hierarki: `OWNER`/`ADMIN` hanya oleh pemegang `OWNER` di branch tujuan atau `SUPER_ADMIN`; aktor wajib memegang
+   `identity.user_role.assign` lewat role-nya **di branch tujuan** (BR-D1D-09) → 403
+9. user target belum punya `user_branch` aktif di branch itu → 422
+10. role sama masih aktif untuk user + branch → 409 (termasuk race: SQLSTATE `23505` dipetakan ke 409, bukan 500)
+
+Cabut: `identity.user_role.revoke` → 403; user/assignment di luar scope, sudah dicabut, atau bukan milik user `:id` → 404;
+diri sendiri → 403; hierarki dan kewenangan di branch assignment → 403; `OWNER` aktif terakhir tenant → 409 (BR-D1D-03,
+dihitung per assignment `OWNER` milik user berstatus `active`, KP-32 b; dijaga kunci baris `tenant` dalam satu transaksi).
+Assign dan cabut berjalan dalam transaksi DB (BR-D1D-13). Efek terlihat di JWT dan `/auth/me` pada request berikutnya
+(BR-D1D-07).
+
+---
+
 # Tenant API
 
 Endpoint:
@@ -227,6 +265,9 @@ Pemetaan endpoint → permission:
 | `POST /users` | `identity.user.create` |
 | `PUT /users/:id`, `PATCH /users/:id/status` | `identity.user.update` |
 | `POST /users/:id/unlock` | `identity.user.unlock` |
+| `GET /roles`, `GET /roles/:id`, `GET /permissions` | `identity.role.read` |
+| `GET /users/:id/roles` | `identity.user_role.read` |
+| `POST /users/:id/roles` / `DELETE /users/:id/roles/:assignmentId` | `identity.user_role.assign` / `identity.user_role.revoke` |
 | `GET /admin/sessions` / `DELETE /admin/sessions/:id` | `identity.session.read` / `identity.session.revoke` |
 | `GET /admin/login-history` | `identity.login_history.read` |
 

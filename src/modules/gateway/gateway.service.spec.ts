@@ -229,6 +229,88 @@ describe('GatewayService', () => {
     });
   });
 
+  describe('BL-07 billing route (AC-BL-05, F16/F20, BR-IN-01)', () => {
+    const kasirCtx = () =>
+      activeCtx({
+        roles: ['KASIR'],
+        platformRoles: [],
+        permissions: [
+          'billing.sale.create',
+          'billing.sale.read',
+          'billing.shift.close',
+          'billing.shift.open',
+          'billing.shift.read',
+          'identity.user.read',
+          'inventory.pos_item.read',
+        ],
+      });
+
+    it('forwards /api/v1/billing/* to BILLING_SERVICE_URL with aud=billing-service', async () => {
+      const { service, request, sign } = setup(undefined, kasirCtx());
+      await service.forward(
+        makeReq('/api/v1/billing/sales?page=1', {}, 'POST'),
+        user,
+        session,
+        'billing',
+      );
+      expect(request.mock.calls[0][0].url).toBe('http://billing:3001/billing/sales?page=1');
+      expect((sign.mock.calls as Array<[unknown, string]>)[0][1]).toBe('billing-service');
+    });
+
+    it('KASIR JWT carries exactly the 5 billing.* codes (no inventory.*, no identity.*)', async () => {
+      const { service, sign } = setup(undefined, kasirCtx());
+      await service.forward(makeReq('/api/v1/billing/shifts'), user, session, 'billing');
+      const claims = (
+        sign.mock.calls as Array<[{ roles: string[]; permissions: string[] }, string]>
+      )[0][0];
+      expect(claims.roles).toEqual(['KASIR']);
+      expect(claims.permissions).toEqual([
+        'billing.sale.create',
+        'billing.sale.read',
+        'billing.shift.close',
+        'billing.shift.open',
+        'billing.shift.read',
+      ]);
+    });
+
+    it.each([
+      '/api/v1/billing/internal/sales',
+      '/api/v1/billing/Internal/sales',
+      '/api/v1/billing/%69nternal/sales',
+      '/api/v1/billing/sales%2Finternal/x',
+    ])('BR-IN-01: %s from client -> 404, not forwarded, no JWT', async (url) => {
+      const { service, request, sign, findPrimary } = setup(undefined, kasirCtx());
+      await expect(
+        service.forward(makeReq(url, {}, 'POST'), user, session, 'billing'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(request).not.toHaveBeenCalled();
+      expect(sign).not.toHaveBeenCalled();
+      expect(findPrimary).not.toHaveBeenCalled();
+    });
+
+    it('KB-16: proxy sets no axios timeout (checkout may take up to 45s)', async () => {
+      const { service, request } = setup(undefined, kasirCtx());
+      await service.forward(makeReq('/api/v1/billing/sales', {}, 'POST'), user, session, 'billing');
+      expect(request.mock.calls[0][0]).not.toHaveProperty('timeout');
+    });
+
+    it('BILLING_SERVICE_URL unset -> 503, no JWT, not forwarded', async () => {
+      const request = jest.fn();
+      const sign = jest.fn();
+      const service = new GatewayService(
+        { axiosRef: { request } } as never,
+        { sign } as never,
+        { resolve: jest.fn() } as never,
+        { getOrThrow: () => ({ services: { billing: undefined } }) } as never,
+      );
+      await expect(
+        service.forward(makeReq('/api/v1/billing/sales'), user, session, 'billing'),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(sign).not.toHaveBeenCalled();
+      expect(request).not.toHaveBeenCalled();
+    });
+  });
+
   describe('M2 path rejection', () => {
     it.each([
       '/api/v1/inventory/internal/inventory/stock/check?item_id=1',
