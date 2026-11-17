@@ -207,7 +207,7 @@ Gateway menentukan tujuan berdasarkan **prefix pertama** dari URL path.
 | Prefix URL | Diteruskan ke | Env Var di Gateway | Contoh URL Client |
 |------------|---------------|--------------------|-------------------|
 | `inventory` | Inventory Service | `INVENTORY_SERVICE_URL` | `/api/v1/inventory/items` |
-| `billing` | Billing Service | `BILLING_SERVICE_URL` | `/api/v1/billing/invoices` |
+| `billing` | Billing Service (JWT `aud=billing-service`) | `BILLING_SERVICE_URL` | `/api/v1/billing/sales` |
 | `clinical` | Clinical Service | `CLINICAL_SERVICE_URL` | `/api/v1/clinical/records` |
 | `notification` | Notification Service | `NOTIFICATION_SERVICE_URL` | `/api/v1/notification/send` |
 
@@ -292,11 +292,34 @@ Browser / Client
 | `404 Not Found` | Unknown downstream service | Prefix service tidak dikenali | Cek Routing Table §5 |
 | `503 Service Unavailable` | Downstream not configured | `*_SERVICE_URL` belum diset di `.env` | Hubungi tim ops |
 | `503 Service Unavailable` | Downstream is unavailable | Service tujuan mati / tidak bisa dijangkau | Cek status downstream service |
+| `404 Not Found` | Not Found | Path memuat segmen `internal` (mis. `/api/v1/inventory/internal/dispensing`); jalur service-to-service tidak bisa lewat Gateway | Jangan dipanggil dari client |
+| `400 Bad Request` | Invalid request path | Path memuat dot-segment `.`/`..` (termasuk yang di-encode) | Perbaiki path |
+
+**Envelope error Gateway** berbeda dari envelope downstream: `{ success: false, message, error, timestamp, path }`,
+**tanpa field `code`** (`error` berisi nama exception, mis. `ServiceUnavailableException`). Client yang membaca `code`
+`BIL_xxx`/`INV_xxx` harus menangani juga bentuk ini, terutama 503 saat Billing atau Inventory mati
+(downstream yang menjawab 503 sendiri, mis. `BIL_015`, memakai envelope downstream dengan `code`).
 
 ### Error dari Downstream (diteruskan apa adanya)
 
 Jika downstream service mengembalikan `400`, `404`, `500`, dll — gateway meneruskan
-status code dan body tersebut langsung ke client tanpa modifikasi.
+status code dan body tersebut langsung ke client tanpa modifikasi. Envelope downstream:
+sukses `{ success, message, data, pagination?, timestamp }`; error `{ success: false, code, message, errors?, details?, timestamp }`
+(`errors[]` = detail per baris/field `{ field, message }`; `details` = field aditif, mis. `{ saleId, saleNumber }` pada Billing `BIL_016`/`BIL_017`).
+
+### Header klien yang diteruskan, `Idempotency-Key`, dan timeout
+
+- Header klien diteruskan kecuali denylist (lihat §6 langkah [4]). `Idempotency-Key` **tidak** ada di denylist,
+  jadi ikut sampai ke downstream. Billing mewajibkannya di `POST /api/v1/billing/sales` (UUID; hilang/bukan UUID -> 400 `BIL_008`).
+  Gateway sendiri tidak membaca atau memvalidasi header ini.
+- Proxy Gateway memakai axios **tanpa timeout** (default tak terbatas) untuk semua service. Timeout ditentukan client.
+  FE memakai timeout 15 detik (default `apiClient`), kecuali checkout `POST /billing/sales` = **45 detik**
+  (anggaran Billing -> Inventory terburuk sekitar 36 detik). Jangan menambah timeout proxy Gateway di bawah 45 detik.
+- Route Billing: `GET /api/v1/billing/shifts/current`, `POST /api/v1/billing/shifts/open`, `POST /api/v1/billing/shifts/:id/close`,
+  `GET /api/v1/billing/shifts`, `GET /api/v1/billing/payment-methods`, `POST|GET /api/v1/billing/sales`, `GET /api/v1/billing/sales/:id`.
+  Detail: [`../../../billing-service/docs/request-context-and-integration.md`](../../../billing-service/docs/request-context-and-integration.md).
+  POS lookup: `GET /api/v1/inventory/pos/items?q=...&limit=...` (permission `inventory.pos_item.read`), kontrak di
+  [`../../../inventory-pharmacy-service/docs/internal-dispensing-and-pos-lookup.md`](../../../inventory-pharmacy-service/docs/internal-dispensing-and-pos-lookup.md).
 
 ---
 
@@ -352,7 +375,7 @@ curl -X POST http://localhost:3000/api/v1/inventory/items \
   -b cookies.txt -s | jq .
 
 # 5. Akses service lain (billing)
-curl "http://localhost:3000/api/v1/billing/invoices" \
+curl "http://localhost:3000/api/v1/billing/shifts/current" \
   -b cookies.txt -s | jq .
 
 # 6. Logout
@@ -413,7 +436,7 @@ const api = {
 // Penggunaan
 await api.login('admin@clinic.test', 'Admin12345!');
 const items = await api.get('inventory/items?page=1');
-const invoice = await api.post('billing/invoices', { patientId: 'p-1', total: 50000 });
+const shift = await api.post('billing/shifts/open', { opening_cash: 200000, open_note: null });
 await api.logout();
 ```
 

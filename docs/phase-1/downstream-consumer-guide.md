@@ -375,6 +375,18 @@ A: Tidak disarankan. JWT hanya berlaku 5 menit dan selalu unik per request.
 Verifikasi signature sangat cepat (Ed25519 sub-millisecond), tidak perlu cache.
 
 **Q: Apakah downstream bisa memanggil service lain?**  
-A: Untuk service-to-service call (tanpa browser), gunakan JWT yang sama
-(`X-User-Context`) yang diterima — teruskan ke service berikutnya. Downstream
-tidak membuat JWT baru; hanya Gateway yang bisa membuat dan menandatangani JWT.
+A: Ya, lewat endpoint `/internal/*` di service tujuan, **tanpa** `X-User-Context`
+(JWT ber-`aud` service pemanggil akan ditolak service tujuan dengan 401). Pemanggil
+mengirim `Authorization: Bearer <INTERNAL_SERVICE_TOKEN>` (secret bersama, nilainya harus
+sama di kedua service) dan header konteks `X-Tenant-Id`, `X-Branch-Id`, `X-User-Id`,
+`X-Request-Id` yang nilainya diambil dari JWT user yang ia terima. Downstream tidak
+membuat JWT baru; hanya Gateway yang menandatangani JWT. Contoh nyata: Billing ->
+Inventory `POST /inventory/internal/dispensing`
+(`inventory-pharmacy-service/docs/internal-dispensing-and-pos-lookup.md`).
+
+**Q: Audience apa saja yang ada, dan permission apa yang masuk ke JWT?**  
+A: `inventory-service`, `billing-service`, `clinical-service`, `notification-service`
+(`GATEWAY_ROUTES`). Claim `permissions` difilter per service: JWT `aud=billing-service`
+hanya berisi kode berawalan `billing.`, JWT `aud=inventory-service` hanya `inventory.`.
+Billing memverifikasi JWT persis seperti panduan ini dengan `aud=billing-service`
+(`billing-service/docs/request-context-and-integration.md`).
